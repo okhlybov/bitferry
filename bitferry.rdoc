@@ -1,0 +1,5 @@
+= bitferry
+
+Generate this with
+    bitferry _doc
+After you have described your command line interface

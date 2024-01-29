@@ -1,0 +1,83 @@
+#!/usr/bin/env ruby
+
+require 'gli'
+
+require 'bitferry'
+
+extend GLI::App
+
+program_desc 'File synchronization/backup automation tool'
+
+version Bitferry::VERSION
+
+arguments :strict
+subcommand_option_handling :normal
+
+desc 'Be as quiet as possible'
+switch [:quiet, :q], { negatable: false }
+
+desc 'Show status information'
+command [:show, :info] do |c|
+  c.action do
+  end
+end
+
+desc 'Create entity (volume, task)'
+command [:new, :create] do |c|
+
+  c.arg 'root_dir'
+  c.desc 'Create new volume'
+  c.command :volume do |e|
+    e.switch :force, { desc: 'Allow overwriting existing volume', negatable: false }
+    e.action do |gopts, opts, args|
+    end
+  end
+
+  c.desc 'Create new task'
+  c.command :task do |e|
+
+  def self.new_task_args(x)
+    x.arg '[local:]src_dir'
+    x.arg '[local:]dst_dir'
+  end
+
+    new_task_args e
+    e.desc 'Create new copy task'
+    e.command :copy do |t|
+      t.action do |gopts, opts, args|
+      end
+    end
+
+    new_task_args e
+    e.desc 'Create new update task'
+    e.command :update do |t|
+      t.action do |gopts, opts, args|
+      end
+    end
+  end
+
+end
+
+desc 'Delete entity (volume, task)'
+command [:delete, :remove] do |c|
+
+  def self.delete_args(x)
+    x.arg 'tag', :multiple
+  end
+
+  delete_args(c)
+  c.desc 'Delete volume'
+  c.command :volume do |e|
+    e.action do |gopts, opts, args|
+    end
+  end
+
+  delete_args(c)
+  c.desc 'Delete task'
+  c.command :task do |e|
+    e.action do |gopts, opts, args|
+    end
+  end
+end
+
+exit run(ARGV)
