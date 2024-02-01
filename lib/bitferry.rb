@@ -1,10 +1,20 @@
 require 'json'
 require 'date'
+require 'logger'
 require 'pathname'
 require 'fileutils'
 
 
 module Bitferry
+
+
+  module Logging
+    @@log = Logger.new($stderr)
+    @@log.progname = :bitferry
+  end
+
+
+  include Logging
 
 
   VERSION = '0.0.1'
@@ -19,15 +29,17 @@ module Bitferry
 
 
   def self.commit
+    @@log.info('Commit phase')
     result = true
     Volume.registered.each do |v|
       begin
         v.commit
-      rescue IOError
-         # TODO log errors
+      rescue IOError => e
+         @@log.fatal(e.message)
          result = false
       end
     end
+    @@log.info(result ? 'Commit successful' : 'Commit failure(s) reported')
     result
   end
 
@@ -44,6 +56,9 @@ module Bitferry
 
 
   class Volume
+
+
+    include Logging
 
 
     STORAGE  = '.bitferry'
@@ -68,15 +83,48 @@ module Bitferry
     def self.force_overwrite=(mode) @force_overwrite = mode end
 
 
-    def self.[](tag) = @@registry[tag]
+    def self.[](tag)
+      @@registry.each_value { |v| return v if v.tag == tag }
+      nil
+    end
+
+
+    def self.new(root)
+      volume = allocate
+      volume.send(:create, root)
+      register(volume)
+    end
+
+
+    def self.restore(root)
+      volume = allocate
+      volume.send(:restore, root)
+      register(volume)
+    end
 
 
     def initialize(root, tag: Bitferry.tag, timestamp: DateTime.now)
       @tag = tag
+      @generation = 0
       @timestamp = timestamp
       @root = Pathname.new(root).realdirpath
+    end
+
+
+    private def create(*, **)
+      initialize(*, **)
       @state = :pristine
       @modified = true
+    end
+
+
+    private def restore(root)
+      json = JSON.load_file(storage = Pathname(root).join(STORAGE), { symbolize_names: true })
+      raise IOError, "Wrong volume storage #{storage}" unless json.has_key?(:bitferry) && json[:bitferry] == "0"
+      initialize(root, tag: json[:tag], timestamp: DateTime.parse(json[:timestamp]))
+      # TODO load tasks
+      @state = :intact
+      @modified = false
     end
 
 
@@ -116,7 +164,7 @@ module Bitferry
 
     private def committed
       x = tasks.collect { |t| t.generation }.min
-      @generation = (x ? x : 0) - 1
+      @generation = x ? x : 0
       @modified = false
     end
 
@@ -162,32 +210,10 @@ module Bitferry
     def self.reset = @@registry = {}
 
 
-    def self.new(root)
-      volume = allocate
-      volume.send(:initialize, root)
-      volume.touch # Instruct to write new volume even if it is empty
-      register(volume)
-    end
-
-
-    def self.restore(root)
-      obj = allocate
-      obj.send(:restore, root)
-      register(obj)
-    end
-
-
-    def self.register(volume) = @@registry[volume.tag] = volume
+    def self.register(volume) = @@registry[volume.root] = volume
 
 
     def self.registered = @@registry.values
-
-
-    private def restore(root)
-      initialize(root) # TODO
-      @state = :intact
-      @modified = false
-    end
 
 
   end
@@ -232,7 +258,7 @@ module Bitferry
     def touch = @generation = [source.generation, destination.generation].max + 1
 
 
-    def untouch = @generation = [source.generation, destination.generation].min - 1
+    def untouch = @generation = [source.generation, destination.generation].min
 
 
     def self.new(source, destination)
@@ -241,6 +267,14 @@ module Bitferry
       task.touch
       register(task)
     end
+
+
+    def self.restore(hash)
+      task = ROUTE[hash['tag']].restore(root)
+      task.untouch # Task being restored should not trigger modification status of the volumes it refers to
+      task
+    end
+
 
 
     def self.[](tag) = @@registry[tag]
@@ -253,13 +287,6 @@ module Bitferry
 
 
     def self.register(task) = @@registry[task.tag] = task
-
-
-    def self.restore(hash)
-      task = ROUTE[hash['tag']].restore(root)
-      task.untouch # Task being restored should not trigger modification status of the volumes it refers to
-      task
-    end
 
 
   end
@@ -297,7 +324,7 @@ module Bitferry
   end
 
 
-  Task::ROUTE = { 'copy/rclone' => Rclone::Copy, 'update/rclone' => Rclone::Update }
+  Task::ROUTE = { 'copy' => Rclone::Copy, 'update' => Rclone::Update }
 
 
   class Endpoint
@@ -374,5 +401,5 @@ module Bitferry
 
   reset
 
-  
+
 end
