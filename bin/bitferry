@@ -39,9 +39,9 @@ command [:show, :info] do |c|
 end
 
 
-pre do |gopts, opts, args|
-  @@log.level = Logger::DEBUG if gopts[:debug]
-end
+#pre do |gopts, opts, args|
+#  @@log.level = Logger::DEBUG if gopts[:debug]
+#end
 
 
 desc 'Create entity (volume, task)'

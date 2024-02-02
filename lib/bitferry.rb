@@ -2,6 +2,7 @@ require 'json'
 require 'date'
 require 'logger'
 require 'pathname'
+require 'rbconfig'
 require 'fileutils'
 
 
@@ -10,6 +11,7 @@ module Bitferry
 
   module Logging
     @@log = Logger.new($stderr)
+    #@@log.level = Logger::Severity::WARN
     @@log.progname = :bitferry
   end
 
@@ -24,7 +26,19 @@ module Bitferry
 
 
   def self.restore
-    TODO
+    reset
+    @@log.info('Volumes restore phase')
+    result = true
+    roots = (environment_mounts + system_mounts).uniq
+    @@log.info("Distilled volume search path: #{roots}")
+    roots.each do |root|
+      if File.exist?(File.join(root, Volume::STORAGE))
+        @@log.info("Trying to restore volume from #{root}")
+        Volume.restore(root) rescue result = false
+      end
+    end
+    @@log.info(result ? 'Volumes restore successful' : 'Volumes restore failure(s) reported')
+    result
   end
 
 
@@ -45,6 +59,7 @@ module Bitferry
 
 
   def self.reset
+    @@log.info('Resetting to initial state')
     Volume.reset
     Task.reset
   end
@@ -53,6 +68,76 @@ module Bitferry
   @simulate = false
   def self.simulate? = @simulate
   def self.simulate=(mode) @simulate = mode end
+
+
+  # Return true if run in the real Windows environment (e.g. not in real *NIX or various emulation layers such as MSYS, Cygwin etc.)
+  def self.windows?
+    @windows ||= /^(mingw)/.match?(RbConfig::CONFIG['target_os']) # RubyInstaller's MRI, other MinGW-build MRI
+  end
+
+  # Return list of live user-provided mounts (mount points on *NIX and disk drives on Windows) which may contain Bitferry volumes
+  # Look for the $BITFERRY_PATH environment variable
+  def self.environment_mounts
+    ENV['BITFERRY_PATH'].split(PATH_LIST_SEPARATOR).collect { |path| File.directory?(path) ? path : nil }.compact rescue []
+  end
+
+
+  # Specify OS-specific path name list separator (such as in the $PATH environment variable)
+  PATH_LIST_SEPARATOR = windows? ? ';' : ':'
+
+
+  # Match OS-specific system mount points (/dev /proc etc.) which normally should be omitted when scanning for Bitferry voulmes
+  UNIX_SYSTEM_MOUNTS = %r!^/(dev|sys|proc|efi)!
+
+
+  # Return list of live system-managed mounts (mount points on *NIX and disk drives on Windows) which may contain Bitferry volumes
+  if RUBY_PLATFORM =~ /java/
+    require 'java'
+    def self.system_mounts
+      java.nio.file.FileSystems.getDefault.getFileStores.collect {|x| /^(.*)\s+\(.*\)$/.match(x.to_s)[1]}
+    end
+  else
+    case RbConfig::CONFIG['target_os']
+    when 'linux'
+      # Linux OS
+      def self.system_mounts
+        # Query /proc for currently mounted file systems
+        IO.readlines('/proc/mounts').collect do |line|
+          mount = line.split[1]
+          UNIX_SYSTEM_MOUNTS.match?(mount) || !File.directory?(mount) ? nil : mount
+        end.compact
+      end
+      # TODO handle Windows variants
+    when /^mingw/ # RubyInstaller's MRI
+    module Kernel32
+      require 'fiddle'
+      require 'fiddle/types'
+      require 'fiddle/import'
+      extend Fiddle::Importer
+      dlload('kernel32')
+      include Fiddle::Win32Types
+      extern 'DWORD WINAPI GetLogicalDrives()'
+    end  
+      def self.system_mounts
+        mounts = []
+        mask = Kernel32.GetLogicalDrives
+        ('A'..'Z').each do |x|
+          mounts << "#{x}:/" if mask & 1 == 1
+          mask >>= 1
+        end
+        mounts
+      end
+    else
+      # Generic *NIX-like OS, including Cygwin & MSYS2
+      def self.system_mounts
+        # Use $(mount) system utility to obtain currently mounted file systems
+        %x(mount).split("\n").collect do |line|
+          mount = line.split[2]
+          UNIX_SYSTEM_MOUNTS.match?(mount) || !File.directory?(mount) ? nil : mount
+        end.compact
+      end
+    end
+  end
 
 
   class Volume
@@ -97,13 +182,20 @@ module Bitferry
 
 
     def self.restore(root)
-      volume = allocate
-      volume.send(:restore, root)
-      register(volume)
+      begin
+        volume = allocate
+        volume.send(:restore, root)
+        volume = register(volume)
+        @@log.info("Successfully restored volume #{volume.tag} from #{root}")
+        volume
+      rescue => e
+        @@log.error("Failed to restore volume from #{root}: #{e.message}")
+        raise
+      end
     end
 
 
-    def initialize(root, tag: Bitferry.tag, timestamp: DateTime.now)
+    private def initialize(root, tag: Bitferry.tag, timestamp: DateTime.now)
       @tag = tag
       @generation = 0
       @timestamp = timestamp
@@ -120,9 +212,9 @@ module Bitferry
 
     private def restore(root)
       json = JSON.load_file(storage = Pathname(root).join(STORAGE), { symbolize_names: true })
-      raise IOError, "Wrong volume storage #{storage}" unless json.has_key?(:bitferry) && json[:bitferry] == "0"
-      initialize(root, tag: json[:tag], timestamp: DateTime.parse(json[:timestamp]))
-      # TODO load tasks
+      raise IOError, "Wrong volume storage #{storage}" unless json.fetch(:bitferry) == "0"
+      initialize(root, tag: json.fetch(:tag), timestamp: DateTime.parse(json.fetch(:timestamp)))
+      json.fetch(:tasks).each { |json| Task::ROUTE[json.fetch(:task)].restore(json) }
       @state = :intact
       @modified = false
     end
@@ -148,6 +240,11 @@ module Bitferry
       end
     end
 
+
+    def endpoint(path)
+      # TODO check
+      Endpoint::Bitferry.new(self, path)
+    end
 
     def modified? = @modified || tasks.any? { |t| t.generation > generation }
 
@@ -231,11 +328,46 @@ module Bitferry
     attr_reader :generation
 
 
-    def initialize(source, destination, tag: Bitferry.tag, timestamp: DateTime.now)
+    def self.new(source, destination)
+      task = allocate
+      task.send(:create, source, destination)
+      register(task)
+    end
+
+
+    def self.restore(json)
+      task = allocate
+      task.send(:restore, json)
+      register(task)
+    end
+
+
+    private def initialize(source, destination, tag: Bitferry.tag, timestamp: DateTime.now)
       @tag = tag
+      @generation = 0
       @timestamp = timestamp
       @source = source
       @destination = destination
+    end
+
+
+    private def create(*, **)
+      initialize(*, **)
+      @state = :pristine
+      touch
+    end
+
+
+    private def restore(json)
+      s = json.fetch(:source)
+      d = json.fetch(:destination)
+      initialize(
+        Endpoint::ROUTE[s.fetch(:endpoint)].restore(s),
+        Endpoint::ROUTE[d.fetch(:endpoint)].restore(d),
+        tag: json.fetch(:tag),
+        timestamp: json.fetch(:timestamp)
+      )
+      @state = :intact
     end
 
 
@@ -256,25 +388,6 @@ module Bitferry
 
 
     def touch = @generation = [source.generation, destination.generation].max + 1
-
-
-    def untouch = @generation = [source.generation, destination.generation].min
-
-
-    def self.new(source, destination)
-      task = allocate
-      task.send(:initialize, source, destination)
-      task.touch
-      register(task)
-    end
-
-
-    def self.restore(hash)
-      task = ROUTE[hash['tag']].restore(root)
-      task.untouch # Task being restored should not trigger modification status of the volumes it refers to
-      task
-    end
-
 
 
     def self.[](tag) = @@registry[tag]
@@ -328,6 +441,15 @@ module Bitferry
 
 
   class Endpoint
+
+
+    def self.restore(json)
+      endpoint = allocate
+      endpoint.send(:restore, json)
+      endpoint
+    end
+
+
   end
 
 
@@ -337,7 +459,10 @@ module Bitferry
     attr_reader :root
 
 
-    def initialize(root) = @root = Pathname.new(root)
+    private def initialize(root) = @root = Pathname.new(root)
+
+
+    private def restore(json) = initialize(json.fetch(:root))
 
 
     def to_ext
@@ -369,9 +494,15 @@ module Bitferry
     attr_reader :path
 
 
-    def initialize(volume, path)
+    private def initialize(volume, path)
       @volume_tag = volume.tag
       @path = Pathname.new(path) # TODO ensure relative
+    end
+
+
+    private def restore(json)
+      @volume_tag = json.fetch(:volume)
+      @path = Pathname.new(json.fetch(:path))
     end
 
 
@@ -395,6 +526,8 @@ module Bitferry
       v ? v.generation : 0
     end
 
+
+    Endpoint::ROUTE = { 'local' => Endpoint::Local, 'bitferry' => Endpoint::Bitferry }
 
   end
 
