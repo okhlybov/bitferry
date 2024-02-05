@@ -8,7 +8,6 @@ require 'bitferry'
 
 
 include Bitferry
-include Bitferry::Logging
 
 
 extend GLI::App
@@ -35,27 +34,62 @@ switch :debug, { negatable: false }
 desc 'Show status information'
 command [:show, :info] do |c|
   c.action do
+    unless (xs = Volume.intact).empty?
+      puts '# Intact volumes'
+      puts
+      xs.each do |volume|
+        puts "  #{volume.tag}    #{volume.root}"
+      end
+    end
+    unless (xs = Task.intact).empty?
+      puts
+      puts '# Intact tasks'
+      puts
+      xs.each do |task|
+        puts "  #{task.tag}    #{task.to_show}"
+      end
+    end
+    unless (xs = Task.stale).empty?
+      puts
+      puts '# Stale tasks'
+      puts
+      xs.each do |task|
+        puts "  #{task.tag}    #{task.to_show}"
+      end
+    end
   end
 end
 
 
-#pre do |gopts, opts, args|
-#  @@log.level = Logger::DEBUG if gopts[:debug]
-#end
+def decode_endpoint(root)
+  x = Volume.endpoint(root)
+  raise ArgumentError, "No intact volume encompasses specified path #{root}" if x.nil?
+  x
+end
+
+
+def create_task(task, *args, **kws)
+  begin
+    task.new(decode_endpoint(args[0]), decode_endpoint(args[1]))
+    true
+  rescue => e
+    log.error(e.message)
+    false
+  end
+end
 
 
 desc 'Create entity (volume, task)'
 command [:new, :create] do |c|
 
 
-  c.arg 'root_dir'
+  c.arg 'root'
   c.desc 'Create new volume'
   c.command :volume do |e|
     e.switch :force, { desc: 'Allow overwriting existing volume storage', negatable: false }
     e.action do |gopts, opts, args|
       Volume.force_overwrite = opts[:force]
       Volume.new(args.first)
-      Bitferry.commit
     end
   end
 
@@ -65,8 +99,8 @@ command [:new, :create] do |c|
 
 
   def self.new_task_args(x)
-    x.arg '[local:]src_dir'
-    x.arg '[local:]dst_dir'
+    x.arg '[local:]source'
+    x.arg '[local:]destination'
   end
 
 
@@ -74,6 +108,7 @@ command [:new, :create] do |c|
   e.desc 'Create new copy task'
   e.command :copy do |t|
     t.action do |gopts, opts, args|
+      create_task(Rclone::Copy, *args)
     end
   end
 
@@ -82,6 +117,7 @@ command [:new, :create] do |c|
   e.desc 'Create new update task'
   e.command :update do |t|
     t.action do |gopts, opts, args|
+      create_task(Rclone::Update, *args)
     end
   end
 end
@@ -116,4 +152,15 @@ command [:delete, :remove] do |c|
 end
 
 
-exit run(ARGV)
+pre do |gopts, cmd, opts, args|
+  Bitferry.log.level = Logger::DEBUG if gopts[:debug]
+  Bitferry.restore
+end
+
+
+post do |gopts, cmd, opts, args|
+  Bitferry.commit
+end
+
+
+exit !run(ARGV)
