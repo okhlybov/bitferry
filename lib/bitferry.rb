@@ -34,41 +34,49 @@ module Bitferry
 
   def self.restore
     reset
-    log.info('Restoring volumes')
+    log.info('restoring volumes')
     result = true
     roots = (environment_mounts + system_mounts).uniq
-    log.debug("Distilled volume search path: #{roots.join(', ')}")
+    log.info("distilled volume search path: #{roots.join(', ')}")
     roots.each do |root|
       if File.exist?(File.join(root, Volume::STORAGE))
-        log.info("Attempting to restore volume from #{root}")
+        log.info("trying to restore volume from #{root}")
         Volume.restore(root) rescue result = false
       end
     end
-    log.info(result ? 'Volumes restore successful' : 'Volume restore failure(s) reported')
+    if result
+      log.info('volumes restored')
+    else
+      log.warn('volume restore failure(s) reported')
+    end
     result
   end
 
 
   def self.commit
-    log.info('Committing changes')
+    log.info('committing changes')
     result = true
     modified = false
-    Volume.registered.each do |v|
+    Volume.registered.each do |volume|
       begin
-        modified = true if v.modified?
-        v.commit
+        modified = true if volume.modified?
+        volume.commit
       rescue IOError => e
-         log.fatal(e.message)
+         log.error(e.message)
          result = false
       end
     end
-    log.info(result ? (modified ? 'Commits successful' : 'Commits skipped') : 'Commit failure(s) reported')
+    if result
+      log.info(modified ? 'changes committed' : 'commits skipped (no changes)')
+    else
+      log.warn('commit failure(s) reported')
+    end
     result
   end
 
 
   def self.reset
-    log.info('Resetting environment')
+    log.info('resetting state')
     Volume.reset
     Task.reset
   end
@@ -165,8 +173,9 @@ module Bitferry
     include Logging
 
 
-    STORAGE  = '.bitferry'
-    STORAGE_ = '.bitferry~'
+    STORAGE      = '.bitferry'
+    STORAGE_     = '.bitferry~'
+    STORAGE_MASK = '.bitferry*'
 
 
     attr_reader :tag
@@ -179,17 +188,27 @@ module Bitferry
 
 
     @force_overwrite = false
-
-
     def self.force_overwrite? = @force_overwrite
-
-
     def self.force_overwrite=(mode) @force_overwrite = mode end
 
 
+    @force_wipe = false
+    def self.force_wipe? = @force_wipe
+    def self.force_wipe=(mode) @force_wipe = mode end
+
+
     def self.[](tag)
-      @@registry.each_value { |v| return v if v.tag == tag }
+      @@registry.each_value { |volume| return volume if volume.tag == tag }
       nil
+    end
+
+
+    # Return list of registered volumes whose tags match at least one specified partial
+    def self.lookup(*parts)
+      rxs = parts.collect { |x| Regexp.new(x) }
+      registered.filter do |volume|
+        rxs.any? { |rx| !(rx =~ volume.tag).nil? }
+      end
     end
 
 
@@ -205,10 +224,11 @@ module Bitferry
         volume = allocate
         volume.send(:restore, root)
         volume = register(volume)
-        log.info("Successfully restored volume #{volume.tag} from #{root}")
+        log.info("restored volume #{volume.tag} from #{root}")
         volume
       rescue => e
-        log.error("Failed to restore volume from #{root}: #{e.message}")
+        log.error("failed to restore volume from #{root}")
+        log.error(e.message) if $DEBUG
         raise
       end
     end
@@ -231,7 +251,7 @@ module Bitferry
 
     private def restore(root)
       json = JSON.load_file(storage = Pathname(root).join(STORAGE), { symbolize_names: true })
-      raise IOError, "Bad volume storage #{storage}" unless json.fetch(:bitferry) == "0"
+      raise IOError, "bad volume storage #{storage}" unless json.fetch(:bitferry) == "0"
       initialize(root, tag: json.fetch(:tag), timestamp: DateTime.parse(json.fetch(:timestamp)))
       json.fetch(:tasks).each { |json| Task::ROUTE.fetch(json.fetch(:task)).restore(json) }
       @state = :intact
@@ -245,17 +265,21 @@ module Bitferry
 
     def commit
       if modified?
+        log.info("commit volume #{tag} (modified)")
         case @state
         when :pristine
           format
-          commit_tasks
           store
-          @state = :intact
         when :intact
-          commit_tasks
           store
+        when :removing
+          remove
+        else
+          raise
         end
         committed
+      else
+        log.info("skipped committing volume #{tag} (unmodified)")
       end
     end
 
@@ -279,6 +303,9 @@ module Bitferry
     def modified? = @modified || tasks.any? { |t| t.generation > generation }
 
 
+    def intact? = @state != :removing
+
+
     def touch
       x = tasks.collect { |t| t.generation }.max
       @generation = x ? x + 1 : 0
@@ -286,7 +313,11 @@ module Bitferry
     end
 
 
-    private def commit_tasks = tasks.each(&:commit)
+    def delete
+      touch
+      @state = :removing
+      log.info("marked volume #{tag} for removal")
+    end
 
 
     private def committed
@@ -297,23 +328,47 @@ module Bitferry
 
 
     private def store
+      tasks.each(&:commit)
       json = JSON.pretty_generate(to_ext)
-      unless Bitferry.simulate?
+      if Bitferry.simulate?
+        log.info("skipped volume #{tag} storage modification (simulation)")
+      else
         begin
           File.write(storage_, json)
           FileUtils.mv(storage_, storage)
+          log.info("written volume #{tag} storage #{storage}")
         ensure
           FileUtils.rm_f(storage_)
         end
       end
+      @state = :intact
     end
 
 
     private def format
-      raise IOError.new("Refuse to overwrite existing volume storage #{storage}") if !Volume.force_overwrite? && File.exist?(storage)
-      unless Bitferry.simulate?
+      raise IOError.new("refuse to overwrite existing volume storage #{storage}") if !Volume.force_overwrite? && File.exist?(storage)
+      if Bitferry.simulate?
+        log.info("skipped storage formatting (simulation)")
+      else
         FileUtils.mkdir_p(root) 
         FileUtils.rm_f [storage, storage_]
+        log.info("formatted volume #{tag} in #{root}")
+      end
+      @state = nil
+    end
+
+
+    private def remove
+      @state = nil
+      @@registry.delete(root)
+      unless Bitferry.simulate?
+        if Volume.force_wipe?
+          FileUtils.rm_rf(Dir[File.join(root, '*'), File.join(root, '.*')])
+          log.info("wiped entire volume directory #{root}")
+        else
+          FileUtils.rm_f [storage, storage_]
+          log.info("removed volume #{tag} storage files #{File.join(root, STORAGE_MASK)}")
+        end
       end
     end
 
@@ -323,15 +378,18 @@ module Bitferry
         bitferry: "0",
         tag: tag,
         timestamp: (@timestamp = DateTime.now),
-        tasks: intact_tasks.collect(&:to_ext)
+        tasks: live_tasks.collect(&:to_ext)
       }
     end
 
 
-    def tasks = Task.registered.filter { |t| t.refers?(self) }
+    def tasks = Task.registered.filter { |task| task.refers?(self) }
 
 
-    def intact_tasks = tasks.filter { |t| t.intact? }
+    def live_tasks = Task.live.filter { |task| task.refers?(self) }
+
+
+    def intact_tasks = live_tasks.filter { |task| task.intact? }
 
 
     def self.reset = @@registry = {}
@@ -343,7 +401,7 @@ module Bitferry
     def self.registered = @@registry.values
 
 
-    def self.intact = registered # FIXME
+    def self.intact = registered.filter { |volume| volume.intact? }
 
 
   end
@@ -404,6 +462,7 @@ module Bitferry
         timestamp: json.fetch(:timestamp)
       )
       @state = :intact
+      log.info("restored task #{tag}")
     end
 
 
@@ -420,7 +479,10 @@ module Bitferry
     def to_show = "#{self.class::SHOW_TAG} #{source.to_show} #{self.class::SHOW_OP} #{destination.to_show}"
 
 
-    def intact? = source.intact? && destination.intact?
+    def intact? = live? && source.intact? && destination.intact?
+
+
+    def live? = !@state.nil? && @state != :removing
 
 
     def refers?(volume) = source.refers?(volume) || destination.refers?(volume)
@@ -432,22 +494,48 @@ module Bitferry
     end
 
 
+    def delete
+      touch
+      @state = :removing
+      log.info("marked task #{tag} for removal")
+    end
+
+
+    def commit
+      case @state
+      when :removing
+        @state = nil
+      end
+    end
+
+
     def self.[](tag) = @@registry[tag]
 
 
+    # Return list of registered tasks whose tags match at least one specified partial
+    def self.lookup(*parts)
+      rxs = parts.collect { |x| Regexp.new(x) }
+      registered.filter do |task|
+        rxs.any? { |rx| !(rx =~ task.tag).nil? }
+      end
+    end
+
     def self.registered = @@registry.values
+
+
+    def self.live = registered.filter { |task| task.live? }
 
 
     def self.reset = @@registry = {}
 
 
-    def self.register(task) = @@registry[task.tag] = task
+    def self.register(task) = @@registry[task.tag] = task # TODO settle on task with the latest timestamp
 
 
-    def self.intact = registered.filter { |task| task.intact? }
+    def self.intact = live.filter { |task| task.intact? }
 
 
-    def self.stale = registered.filter { |task| !task.intact? }
+    def self.stale = live.filter { |task| !task.intact? }
 
 
   end
@@ -459,29 +547,27 @@ module Bitferry
 
   class Rclone::Copy < Task
 
-    SHOW_TAG = :copy
 
+    SHOW_TAG = :copy
     SHOW_OP = '-->'
+
 
     def to_ext = super.merge(task: :copy)
 
-    def commit
-      # TODO
-    end
+
   end
 
 
   class Rclone::Update < Task
 
-    SHOW_TAG = :update
 
+    SHOW_TAG = :update
     SHOW_OP = '-->'
+
 
     def to_ext = super.merge(task: :update)
 
-    def commit
-      # TODO
-    end
+
   end
 
 
@@ -553,7 +639,7 @@ module Bitferry
     private def initialize(volume, path)
       @volume_tag = volume.tag
       @path = Pathname.new(path)
-      raise ArgumentError, "Expected relative path but got #{self.path}" unless (/^[\.\/]/ =~ self.path.to_s).nil?
+      raise ArgumentError, "expected relative path but got #{self.path}" unless (/^[\.\/]/ =~ self.path.to_s).nil?
     end
 
 

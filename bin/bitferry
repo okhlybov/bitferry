@@ -4,13 +4,16 @@
 require 'gli'
 
 
+include GLI::App
+
+
 require 'bitferry'
 
 
 include Bitferry
 
 
-extend GLI::App
+$failure = false
 
 
 program_desc 'File synchronization/backup automation tool'
@@ -25,6 +28,10 @@ subcommand_option_handling :normal
 
 desc 'Be as quiet as possible'
 switch [:quiet, :q], { negatable: false }
+
+
+desc 'Simulation mode (make no on-disk changes)'
+switch ['dry-run', :n], { negatable: false }
 
 
 desc 'Debug mode with lots of information'
@@ -62,8 +69,8 @@ end
 
 
 def decode_endpoint(root)
-  x = Volume.endpoint(root)
-  raise ArgumentError, "No intact volume encompasses specified path #{root}" if x.nil?
+  x = Bitferry.endpoint(root)
+  raise ArgumentError, "no volume encompasses specified path #{root}" if x.nil?
   x
 end
 
@@ -71,10 +78,9 @@ end
 def create_task(task, *args, **kws)
   begin
     task.new(decode_endpoint(args[0]), decode_endpoint(args[1]))
-    true
   rescue => e
     log.error(e.message)
-    false
+    raise
   end
 end
 
@@ -88,7 +94,7 @@ command [:new, :create] do |c|
   c.command :volume do |e|
     e.switch :force, { desc: 'Allow overwriting existing volume storage', negatable: false }
     e.action do |gopts, opts, args|
-      Volume.force_overwrite = opts[:force]
+      Volume.force_overwrite = true if opts[:force]
       Volume.new(args.first)
     end
   end
@@ -138,7 +144,21 @@ command [:delete, :remove] do |c|
   delete_args(c)
   c.desc 'Delete volume'
   c.command :volume do |e|
+    e.switch :wipe, { desc: 'Wipe entire volume directory', negatable: false }
     e.action do |gopts, opts, args|
+      Volume.force_wipe = true if opts[:wipe]
+      args.each do |partial|
+        volumes = Volume.lookup(partial)
+        case volumes.size
+        when 0 then log.warn("no volume matching (partial) tag #{partial}")
+        when 1
+        else
+          tags = volumes.collect { |task| task.tag }
+          log.fatal("multiple volumes matching (partial) tag #{partial}: #{tags.join(', ')}")
+          raise
+        end
+        volumes.each(&:delete)
+      end
     end
   end
 
@@ -147,20 +167,39 @@ command [:delete, :remove] do |c|
   c.desc 'Delete task'
   c.command :task do |e|
     e.action do |gopts, opts, args|
+      args.each do |partial|
+        tasks = Task.lookup(partial)
+        case tasks.size
+        when 0 then log.warn("no task matching (partial) tag #{partial}")
+        when 1
+        else
+          tags = tasks.collect { |task| task.tag }
+          log.fatal("multiple tasks matching (partial) tag #{partial}: #{tags.join(', ')}")
+          raise
+        end
+        tasks.each(&:delete)
+      end
     end
   end
 end
 
 
 pre do |gopts, cmd, opts, args|
-  Bitferry.log.level = Logger::DEBUG if gopts[:debug]
-  Bitferry.restore
+  Bitferry.log.level = Logger::DEBUG if gopts[:debug] || $DEBUG
+  Bitferry.simulate = true if gopts[:n]
+  $failure = true unless Bitferry.restore
+  true
 end
 
 
 post do |gopts, cmd, opts, args|
-  Bitferry.commit
+  $failure = true unless Bitferry.commit
+  raise if $failure
+  true
 end
 
 
-exit !run(ARGV)
+on_error {}
+
+
+exit run(ARGV)
