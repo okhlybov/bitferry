@@ -7,11 +7,14 @@ class Source < OpenStruct
 
   def location = eval %/"#{url}"/
 
+  def storage = Cache
+
+  def destination = Build
+
   def fetch
-    dest = Cache
     x = location
-    FileUtils.mkdir_p(dest)
-    file = File.join(dest, File.basename(x))
+    FileUtils.mkdir_p(storage)
+    file = File.join(storage, File.basename(x))
     unless File.exist?(file) && Digest::SHA256.file(file) == sha256
       puts "fetching #{x}"
       file_ = Down.download(x, progress_proc: ->(_) { print '.' })
@@ -23,13 +26,12 @@ class Source < OpenStruct
   end
 
   def extract
-    dest = Build
     file = fetch
     case file
     when /zip$/
-      `unzip -o "#{file}" -d "#{dest}"`
+      `unzip -o "#{file}" -d "#{destination}"`
     when /7z$/
-      `7z x "#{file}" "-o#{dest}"`
+      `7z x "#{file}" "-o#{destination}"`
     else
       raise "unsupported archive format for #{file}"
     end
@@ -38,12 +40,8 @@ class Source < OpenStruct
 end
 
 Build = 'build'
+
 Cache = 'cache'
-
-require 'rake/clean'
-
-CLEAN << Build
-CLOBBER << Cache
 
 Ruby = Source.new(
   version: '3.2.3',
@@ -67,14 +65,57 @@ Restic = Source.new(
   sha256: '46d932ff5e5ca781fb01d313a56cf4087f27250fbdc0d7cb56fa958476bb8af8'
 )
 
+require 'rake/clean'
+
+CLEAN << Build
+CLOBBER << Cache
+
+ENV['GEM_HOME'] = nil # Prevent the Ruby managers (RVM etc.) interference
+
+def start(cmd)
+  if Gem::Platform.local.os == "linux"
+    sh "wine cmd /c #{cmd}"
+  else
+    sh cmd
+  end
+end
+
 task :pristine do |t|
   rm_rf Build
   mkdir_p Build
 end
 
-task :extract => :pristine do |t|
-  [Ruby, Rclone, Restic].each do |x|
-    x.extract
+namespace :ruby do
+  task :extract => :pristine do
+    Ruby.extract
+  end
+  task :normalize => :extract do
+    cd Build do
+      mv Dir['rubyinstaller-*'].first, 'ruby'
+    end
+  end
+  task :configure => :normalize do
+    cd "#{Build}/ruby/bin" do
+      start "gem install fxruby"
+    end
+  end
+  task :fix => :configure do
+    cd "#{Build}/ruby" do
+      rm_rf Dir['include', 'share', 'packages', 'ridk_use']
+      rm_rf Dir['lib/*.a', 'lib/pkgconfig', 'lib/ruby/site_ruby/*/*', 'lib/ruby/gems/*/cache/*', 'lib/ruby/gems/*/doc/*']
+    end
+  end
+end
+
+namespace :restic do
+  task :extract => :pristine do
+    Restic.extract
+  end
+end
+
+namespace :rclone do
+  task :extract => :pristine do
+    Rclone.extract
   end
 end
 
