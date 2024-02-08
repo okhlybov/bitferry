@@ -30,12 +30,16 @@ desc 'Be as quiet as possible'
 switch [:quiet, :q], { negatable: false }
 
 
+desc 'Be more verbose'
+switch [:verbose, :v], { negatable: false }
+
+
 desc 'Simulation mode (make no on-disk changes)'
 switch ['dry-run', :n], { negatable: false }
 
 
 desc 'Debug mode with lots of information'
-switch :debug, { negatable: false }
+switch [:debug, :d], { negatable: false }
 
 
 desc 'Show status information'
@@ -65,6 +69,12 @@ command [:show, :info] do |c|
       end
     end
   end
+end
+
+
+desc 'Process intact tasks'
+command :process do |p|
+  p.action { $failure = true unless Bitferry.process }
 end
 
 
@@ -187,6 +197,8 @@ end
 pre do |gopts, cmd, opts, args|
   Bitferry.log.level = Logger::DEBUG if gopts[:debug] || $DEBUG
   Bitferry.simulate = true if gopts[:n]
+  Bitferry.verbosity = :verbose if gopts[:verbose]
+  Bitferry.verbosity = :quiet if gopts[:quiet]
   $failure = true unless Bitferry.restore
   true
 end
@@ -194,12 +206,12 @@ end
 
 post do |gopts, cmd, opts, args|
   $failure = true unless Bitferry.commit
-  raise if $failure
+  raise 'failure(s) reported' if $failure
   true
 end
 
 
-on_error {}
+#on_error {}
 
 
 exit run(ARGV)

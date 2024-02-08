@@ -4,6 +4,7 @@ require 'logger'
 require 'pathname'
 require 'rbconfig'
 require 'fileutils'
+require 'shellwords'
 
 
 module Bitferry
@@ -82,6 +83,18 @@ module Bitferry
   end
 
 
+  def self.process
+    log.info('processing tasks')
+    result = Volume.intact.collect { |volume| volume.intact_tasks }.flatten.uniq.all? { |task| task.process }
+    if result
+      log.info('tasks processed')
+    else
+      log.warn('task process failure(s) reported')
+    end
+    result
+  end
+
+
   # Decode endpoint definition
   def self.endpoint(root)
     case root
@@ -95,6 +108,11 @@ module Bitferry
   @simulate = false
   def self.simulate? = @simulate
   def self.simulate=(mode) @simulate = mode end
+
+
+  @verbosity = :default
+  def self.verbosity = @verbosity
+  def self.verbosity=(mode) @verbosity = mode end
 
 
   # Return true if run in the real Windows environment (e.g. not in real *NIX or various emulation layers such as MSYS, Cygwin etc.)
@@ -542,14 +560,63 @@ module Bitferry
 
 
   module Rclone
+
+
+    def self.executable = @executable ||= (rclone = ENV['RCLONE']).nil? ? 'rclone' : rclone
+
+
+    def self.run(*args)
+    end
+
   end
   
 
-  class Rclone::Copy < Task
+  class Rclone::Task < Task
+
+
+    def options = [
+      '--config', Bitferry.windows? ? 'NUL' : '/dev/null',
+      case Bitferry.verbosity
+      when :verbose then '--verbose'
+      when :quiet then '--quiet'
+      else nil
+      end,
+      Bitferry.verbosity == :verbose ? '--progress' : nil,
+      Bitferry.simulate? ? '--dry-run' : nil,
+      '--filter', "- #{Volume::STORAGE}", '--filter', "- #{Volume::STORAGE_}"
+    ].compact
+
+
+    def command = [Rclone.executable] + options + [source.root.to_s, destination.root.to_s]
+
+
+    def process
+      cmd = command
+      log.info("processing task #{tag}")
+      cmd_s = cmd.collect(&:shellescape).join(' ')
+      puts cmd_s if Bitferry.verbosity == :verbose
+      log.info(cmd_s)
+      case system(*cmd)
+      when nil then log.error("rclone execution failure")
+      when false then log.error("rclone exit status #{$?.to_i}")
+      else
+        return true
+      end
+      false
+    end
+
+
+  end
+
+
+  class Rclone::Copy < Rclone::Task
 
 
     SHOW_TAG = :copy
     SHOW_OP = '-->'
+
+    
+    def options = super.concat ['copy']
 
 
     def to_ext = super.merge(task: :copy)
@@ -558,11 +625,14 @@ module Bitferry
   end
 
 
-  class Rclone::Update < Task
+  class Rclone::Update < Rclone::Task
 
 
     SHOW_TAG = :update
     SHOW_OP = '-->'
+
+
+    def options = super.concat ['copy', '--update']
 
 
     def to_ext = super.merge(task: :update)
@@ -634,6 +704,9 @@ module Bitferry
 
 
     attr_reader :path
+
+
+    def root = Volume[volume_tag].root.join(path)
 
 
     private def initialize(volume, path)
