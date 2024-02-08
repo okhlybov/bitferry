@@ -211,7 +211,4 @@ post do |gopts, cmd, opts, args|
 end
 
 
-#on_error {}
-
-
 exit run(ARGV)

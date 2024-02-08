@@ -1,5 +1,6 @@
 require 'json'
 require 'date'
+require 'open3'
 require 'logger'
 require 'pathname'
 require 'rbconfig'
@@ -564,9 +565,25 @@ module Bitferry
 
     def self.executable = @executable ||= (rclone = ENV['RCLONE']).nil? ? 'rclone' : rclone
 
-
-    def self.run(*args)
+    
+    def self.exec(*args)
+      cmd = [executable] + args
+      log.info(cmd.collect(&:shellescape).join(' '))
+      stdout, status = Open3.capture2(*cmd)
+      unless status.success?
+        msg = "rclone exit code #{status.to_i}"
+        log.error(msg)
+        raise RuntimeError, msg
+      end
+      stdout.strip
     end
+
+
+    def self.obscure(plain) = exec('obscure', plain)
+
+
+    def self.reveal(token) = exec('reveal', token)
+
 
   end
   
@@ -593,14 +610,13 @@ module Bitferry
     def process
       cmd = command
       log.info("processing task #{tag}")
-      cmd_s = cmd.collect(&:shellescape).join(' ')
-      puts cmd_s if Bitferry.verbosity == :verbose
-      log.info(cmd_s)
-      case system(*cmd)
+      cms = cmd.collect(&:shellescape).join(' ')
+      puts cms if Bitferry.verbosity == :verbose
+      log.info(cms)
+      case system(*cmd) # using system() to prevent gobbling output channels
       when nil then log.error("rclone execution failure")
-      when false then log.error("rclone exit status #{$?.to_i}")
-      else
-        return true
+      when false then log.error("rclone exit code #{$?.to_i}")
+      else return true
       end
       false
     end
