@@ -55,6 +55,8 @@ build-iPhoneSimulator/
 # Used by RuboCop. Remote config files pulled in from inherit_from directive.
 # .rubocop-https?--*
 
+build
+cache
 Gemfile.lock
 .bitferry
 .bitferry~
