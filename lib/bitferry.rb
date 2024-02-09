@@ -206,6 +206,9 @@ module Bitferry
     attr_reader :root
 
 
+    attr_reader :vault
+
+
     @force_overwrite = false
     def self.force_overwrite? = @force_overwrite
     def self.force_overwrite=(mode) @force_overwrite = mode end
@@ -256,6 +259,7 @@ module Bitferry
     private def initialize(root, tag: Bitferry.tag, timestamp: DateTime.now)
       @tag = tag
       @generation = 0
+      @vault = {}
       @timestamp = timestamp
       @root = Pathname.new(root).realdirpath
     end
@@ -272,7 +276,8 @@ module Bitferry
       json = JSON.load_file(storage = Pathname(root).join(STORAGE), { symbolize_names: true })
       raise IOError, "bad volume storage #{storage}" unless json.fetch(:bitferry) == "0"
       initialize(root, tag: json.fetch(:tag), timestamp: DateTime.parse(json.fetch(:timestamp)))
-      json.fetch(:tasks).each { |json| Task::ROUTE.fetch(json.fetch(:task)).restore(json) }
+      json.fetch(:tasks, []).each { |json| Task::ROUTE.fetch(json.fetch(:task)).restore(json) }
+      @vault = json.fetch(:vault, {}).transform_keys { |key| key.to_s }
       @state = :intact
       @modified = false
     end
@@ -393,12 +398,14 @@ module Bitferry
 
 
     def to_ext
+      tasks = live_tasks
       {
         bitferry: "0",
         tag: tag,
         timestamp: (@timestamp = DateTime.now),
-        tasks: live_tasks.collect(&:to_ext)
-      }
+        tasks: tasks.empty? ? nil : tasks.collect(&:to_ext),
+        vault: vault.empty? ? nil : vault
+      }.compact
     end
 
 
@@ -588,35 +595,180 @@ module Bitferry
   end
   
 
+  class Rclone::Encryption
+
+
+    OPERATION = Set[:encrypt, :decrypt]
+
+
+    attr_reader :operation
+
+
+    def operation=(op)
+      OPERATION.include?(@operation = op.intern) ? @operation : raise("bad encryption operation #{op}")
+    end
+
+
+    NAME_ENCODER = { nil => nil, base32: :base32, base64: :base64, base32768: :base32768 }
+
+
+    attr_reader :name_encoder
+
+
+    def name_encoder=(mode)
+      NAME_ENCODER.keys.include?(@name_encoder = mode.intern) ? @name_encoder : raise("bad file/directory name encoder #{mode}")
+    end
+
+
+    NAME_TRANSFORMER = { nil => nil, false => :off, encrypter: :standard, obfuscator: :obfuscate }
+
+
+    attr_reader :name_transformer
+
+
+    def name_transformer=(mode)
+      NAME_TRANSFORMER.keys.include?(@name_transformer = mode.intern) ? @name_transformer : raise("bad file/directory name transformer #{mode}")
+    end
+
+
+    attr_reader :token
+
+
+    private def initialize(operation, token, name_encoder: :base32, name_transformer: :encrypter)
+      self.operation = operation
+      self.name_encoder = name_encoder
+      self.name_transformer = name_transformer
+      self.token = token
+    end
+
+
+    private def create(operation, password, **)
+      initialize(operation, Rclone.obscure(password), **)
+    end
+
+
+    private def restore(json)
+      rclone = json[:rclone]; rclone = {} if rclone.nil?
+      initialize(json.fetch(:operation), nil, name_encoder: rclone['name-encoder'], name_transformer: rclone['name-transformer'])
+    end
+
+
+    def to_ext
+      {
+        operation: operation,
+        rclone: {
+          'name-encoder' => name_encoder,
+          'name-transformer' => name_transformer
+        }.compact
+      }
+    end
+
+
+    # [encrypted, decrypted]
+    private def endpoints(task)
+      case operation
+        when :encrypt then [task.destination, task.source]
+        when :decrypt then [task.source, task.destination]
+        else raise
+      end
+    end
+
+
+    private def install_token(task)
+      _, decrypted = endpoints(task)
+      raise TypeError, "unsupported decrypted endpoint type" unless decrypted.is_a?(Endpoint::Bitferry)
+      Volume[decrypted.volume_id].vault[task.tag] = token # Token is stored on the decrypted end only
+    end
+
+
+    private def obtain_token(task)
+      _, decrypted = endpoints(task)
+      Volume[decrypted.volume_id].vault.fetch(task.tag)
+    end
+
+
+    def configure(task) = install_token(task)
+
+
+    def self.new(operation, password, **)
+      obj = allocate
+      obj.send(:create, operation, password, **)
+      obj
+    end
+
+
+    def self.restore(json)
+      obj = allocate
+      obj.send(:restore, json)
+      obj
+    end
+
+
+    def arguments(task)
+      ENV['RCLONE_CRYPT_PASSWORD'] = Volume[decrypted.volume_id].vault.fetch(task.tag)
+      args = [
+        '--crypt-remote',
+        case operation
+          when :encrypt then task.destination.root.to_s
+          when :decrypt then task.source.root.to_s
+          else raise
+        end
+      ]
+      args += ['--crypt-filename-encryption', NAME_TRANSFORMER[name_transformer].to_s] unless name_transformer.nil?
+      args += ['--crypt-filename-encoding', NAME_ENCODER[name_encoder].to_s] unless name_encoder.nil?
+      args += case operation
+        when :encrypt then [task.source.root.to_s, ':crypt:']
+        when :decrypt then [':crypt:', task.destination.root.to_s]
+        else raise
+      end
+    end
+
+
+  end
+
+
   class Rclone::Task < Task
 
 
-    def options = [
-      '--config', Bitferry.windows? ? 'NUL' : '/dev/null',
-      case Bitferry.verbosity
-      when :verbose then '--verbose'
-      when :quiet then '--quiet'
-      else nil
-      end,
-      Bitferry.verbosity == :verbose ? '--progress' : nil,
-      Bitferry.simulate? ? '--dry-run' : nil,
-      '--filter', "- #{Volume::STORAGE}", '--filter', "- #{Volume::STORAGE_}"
-    ].compact
+    attr_reader :encryption
 
 
-    def command = [Rclone.executable] + options + [source.root.to_s, destination.root.to_s]
+    attr_reader :token
+
+
+    def initialize(*args, encryption: nil, **opts)
+      super(*args, **opts)
+      @encryption = encryption
+      encryption.configure(self) unless encryption.nil?
+    end
+
+
+    def arguments
+      args = [
+        '--config', Bitferry.windows? ? 'NUL' : '/dev/null',
+          case Bitferry.verbosity
+            when :verbose then '--verbose'
+            when :quiet then '--quiet'
+            else nil
+          end,
+        Bitferry.verbosity == :verbose ? '--progress' : nil,
+        Bitferry.simulate? ? '--dry-run' : nil,
+        '--filter', "- #{Volume::STORAGE}", '--filter', "- #{Volume::STORAGE_}"
+      ].compact
+      args += encryption.nil? ? [source.root.to_s, destination.root.to_s] : encryption.arguments(self)
+    end
 
 
     def process
-      cmd = command
+      cmd = [Rclone.executable] + arguments
       log.info("processing task #{tag}")
       cms = cmd.collect(&:shellescape).join(' ')
       puts cms if Bitferry.verbosity == :verbose
       log.info(cms)
       case system(*cmd) # using system() to prevent gobbling output channels
-      when nil then log.error("rclone execution failure")
-      when false then log.error("rclone exit code #{$?.to_i}")
-      else return true
+        when nil then log.error("rclone execution failure")
+        when false then log.error("rclone exit code #{$?.to_i}")
+        else return true
       end
       false
     end

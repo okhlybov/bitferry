@@ -196,7 +196,7 @@ end
 
 pre do |gopts, cmd, opts, args|
   Bitferry.log.level = Logger::DEBUG if gopts[:debug] || $DEBUG
-  Bitferry.simulate = true if gopts[:n]
+  Bitferry.simulate = true if gopts[:'dry-run']
   Bitferry.verbosity = :verbose if gopts[:verbose]
   Bitferry.verbosity = :quiet if gopts[:quiet]
   $failure = true unless Bitferry.restore
