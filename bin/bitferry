@@ -85,16 +85,6 @@ def decode_endpoint(root)
 end
 
 
-def create_task(task, *args, **kws)
-  begin
-    task.new(decode_endpoint(args[0]), decode_endpoint(args[1]))
-  rescue => e
-    log.error(e.message)
-    raise
-  end
-end
-
-
 desc 'Create entity (volume, task)'
 command [:new, :create] do |c|
 
@@ -110,21 +100,55 @@ command [:new, :create] do |c|
   end
 
 
+  def create_task(task, *args, **opts)
+    begin
+      m = encryption_mode(**opts)
+      x = m.nil? ? nil : Rclone::Encryption.new(m, '1 23')
+      task.new(decode_endpoint(args[0]), decode_endpoint(args[1]), encryption: x)
+    rescue => e
+      log.error(e.message)
+      raise
+    end
+  end
+  
+  
+  def self.new_task_args(x)
+    x.arg '[remote:]source'
+    x.arg '[remote:]destination'
+  end
+
+
+  def self.new_task_opts(x)
+    x.switch [:encrypt, :e], { desc: 'Encrypt destination files', negatable: false }
+    x.switch [:decrypt, :d], { desc: 'Decrypt source files', negatable: false }
+  end
+  
+  
+  def self.encryption_mode(**opts)
+    mode = nil
+    [:encrypt, :decrypt].each do |m|
+      if opts[m]
+        if mode.nil?
+          mode = m
+        else
+          raise "expected only one encryption mode specifier"
+        end
+      end
+    end
+    mode
+  end
+
+
   c.desc 'Create new task'
   c.command :task do |e|
-
-
-  def self.new_task_args(x)
-    x.arg '[local:]source'
-    x.arg '[local:]destination'
-  end
 
 
   new_task_args e
   e.desc 'Create new copy task'
   e.command :copy do |t|
+    new_task_opts t
     t.action do |gopts, opts, args|
-      create_task(Rclone::Copy, *args)
+      create_task(Rclone::Copy, *args, **opts)
     end
   end
 
@@ -132,9 +156,10 @@ command [:new, :create] do |c|
   new_task_args e
   e.desc 'Create new update task'
   e.command :update do |t|
+    new_task_opts t
     t.action do |gopts, opts, args|
-      create_task(Rclone::Update, *args)
-    end
+    create_task(Rclone::Update, *args, **opts)
+  end
   end
 end
 

@@ -448,9 +448,9 @@ module Bitferry
     attr_reader :generation
 
 
-    def self.new(source, destination)
+    def self.new(source, destination, **)
       task = allocate
-      task.send(:create, source, destination)
+      task.send(:create, source, destination, **)
       register(task)
     end
 
@@ -497,8 +497,9 @@ module Bitferry
         tag: tag,
         source: source.to_ext,
         destination: destination.to_ext,
-        timestamp: @timestamp
-      }
+        timestamp: @timestamp,
+        encryption: encryption.nil? ? nil : encryption.to_ext
+      }.compact
     end
 
 
@@ -638,7 +639,7 @@ module Bitferry
       self.operation = operation
       self.name_encoder = name_encoder
       self.name_transformer = name_transformer
-      self.token = token
+      @token = token
     end
 
 
@@ -675,15 +676,15 @@ module Bitferry
 
 
     private def install_token(task)
-      _, decrypted = endpoints(task)
+      encrypted, decrypted = endpoints(task)
       raise TypeError, "unsupported decrypted endpoint type" unless decrypted.is_a?(Endpoint::Bitferry)
-      Volume[decrypted.volume_id].vault[task.tag] = token # Token is stored on the decrypted end only
+      Volume[decrypted.volume_tag].vault[task.tag] = token # Token is stored on the decrypted end only
     end
 
 
     private def obtain_token(task)
-      _, decrypted = endpoints(task)
-      Volume[decrypted.volume_id].vault.fetch(task.tag)
+      encrypted, decrypted = endpoints(task)
+      Volume[decrypted.volume_tag].vault.fetch(task.tag)
     end
 
 
@@ -705,7 +706,7 @@ module Bitferry
 
 
     def arguments(task)
-      ENV['RCLONE_CRYPT_PASSWORD'] = Volume[decrypted.volume_id].vault.fetch(task.tag)
+      ENV['RCLONE_CRYPT_PASSWORD'] = obtain_token(task)
       args = [
         '--crypt-remote',
         case operation
@@ -760,7 +761,7 @@ module Bitferry
 
 
     def process
-      cmd = [Rclone.executable] + arguments
+      cmd = [Rclone.executable] + [] + arguments
       log.info("processing task #{tag}")
       cms = cmd.collect(&:shellescape).join(' ')
       puts cms if Bitferry.verbosity == :verbose
@@ -774,6 +775,12 @@ module Bitferry
     end
 
 
+    private def restore(json)
+      super(json)
+      @encryption = Rclone::Encryption.restore(json[:encryption])
+    end
+
+
   end
 
 
@@ -781,10 +788,10 @@ module Bitferry
 
 
     SHOW_TAG = :copy
-    SHOW_OP = '-->'
+    SHOW_OP  = '-->'
 
     
-    def options = super.concat ['copy']
+    def arguments = ['copy'] + super
 
 
     def to_ext = super.merge(task: :copy)
@@ -797,10 +804,10 @@ module Bitferry
 
 
     SHOW_TAG = :update
-    SHOW_OP = '-->'
+    SHOW_OP  = '-->'
 
 
-    def options = super.concat ['copy', '--update']
+    def arguments = ['copy', '--update'] + super
 
 
     def to_ext = super.merge(task: :update)
