@@ -195,7 +195,7 @@ command [:new, :create] do |c|
     end
   end
 
-  
+
 end
 
 
@@ -220,11 +220,11 @@ command [:delete, :remove] do |c|
       args.each do |partial|
         volumes = Volume.lookup(partial)
         case volumes.size
-        when 0 then log.warn("no volume matching (partial) tag #{partial}")
+        when 0 then log.warn("no intact volume matching (partial) tag #{partial}")
         when 1
         else
-          tags = volumes.collect { |task| task.tag }
-          log.fatal("multiple volumes matching (partial) tag #{partial}: #{tags.join(', ')}")
+          tags = volumes.collect { |v| v.tag }.join(', ')
+          log.fatal("multiple intact volumes matching (partial) tag #{partial}: #{tags}")
           raise
         end
         volumes.each(&:delete)

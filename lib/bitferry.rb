@@ -99,6 +99,16 @@ module Bitferry
   # Decode endpoint definition
   def self.endpoint(root)
     case root
+    when /^:(\w+):(.*)/
+      volumes = Volume.lookup($1)
+      volume = case volumes.size
+      when 0 then raise("no intact volumes matching (partial) tag #{$1}")
+      when 1 then volumes.first
+      else
+        tags = volumes.collect { |v| v.tag }.join(', ')
+        raise("multiple intact volumes matching (partial) tag #{$1}: #{tags}")
+      end
+      Endpoint::Bitferry.new(volume, $2)
     when /^(?:local)?:(.*)/ then Endpoint::Local.new($1)
     when /^(\w{2,}):(.*)/ then Endpoint::Rclone.new($1, $2)
     else Volume.endpoint(root)
@@ -784,7 +794,7 @@ module Bitferry
 
     private def restore(json)
       super(json)
-      @encryption = Rclone::Encryption.restore(json[:encryption])
+      @encryption = json[:encryption].nil? ? nil : Rclone::Encryption.restore(json[:encryption])
       @options = json.fetch(:rclone, [])
     end
 
@@ -927,7 +937,7 @@ module Bitferry
     end
 
 
-    def show_status = intact? ? "#{volume_tag}:#{path}" : "{#{volume_tag}}:#{path}"
+    def show_status = intact? ? ":#{volume_tag}:#{path}" : ":{#{volume_tag}}:#{path}"
 
 
     def intact? = !Volume[volume_tag].nil?
