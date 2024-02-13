@@ -1,13 +1,12 @@
 #!/usr/bin/env ruby
 
 
+require 'io/console'
+require 'bitferry'
 require 'gli'
 
 
 include GLI::App
-
-
-require 'bitferry'
 
 
 include Bitferry
@@ -57,7 +56,7 @@ command [:show, :info] do |c|
       puts '# Intact tasks'
       puts
       xs.each do |task|
-        puts "  #{task.tag}    #{task.to_show}"
+        puts "  #{task.tag}    #{task.show_status}"
       end
     end
     unless (xs = Task.stale).empty?
@@ -65,7 +64,7 @@ command [:show, :info] do |c|
       puts '# Stale tasks'
       puts
       xs.each do |task|
-        puts "  #{task.tag}    #{task.to_show}"
+        puts "  #{task.tag}    #{task.show_status}"
       end
     end
   end
@@ -100,11 +99,9 @@ command [:new, :create] do |c|
   end
 
 
-  def create_task(task, *args, **opts)
+  def create_rclone_task(task, *args, **)
     begin
-      m = encryption_mode(**opts)
-      x = m.nil? ? nil : Rclone::Encryption.new(m, '1 23')
-      task.new(decode_endpoint(args[0]), decode_endpoint(args[1]), encryption: x)
+      task.new(decode_endpoint(args[0]), decode_endpoint(args[1]), encryption: decode_rclone_encryption(**))
     rescue => e
       log.error(e.message)
       raise
@@ -119,23 +116,48 @@ command [:new, :create] do |c|
 
 
   def self.new_task_opts(x)
-    x.switch [:encrypt, :e], { desc: 'Encrypt destination files', negatable: false }
-    x.switch [:decrypt, :d], { desc: 'Decrypt source files', negatable: false }
+    x.flag [:transformer, :t], { desc: 'File name transformer (-t- to disable transformation)', default_value: :encrypter }
+    x.flag [:encoder, :c], { desc: 'File name encoder', default_value: :base32 }
+    x.switch [:unicode, :u], { desc: 'Force unicode-aware file name encoding (overrides -c)', negatable: false }
+    x.switch [:encrypt, :e], { desc: 'Encrypt files in destination', negatable: false }
+    x.switch [:decrypt, :d], { desc: 'Decrypt files from source', negatable: false }
   end
   
   
-  def self.encryption_mode(**opts)
-    mode = nil
-    [:encrypt, :decrypt].each do |m|
-      if opts[m]
-        if mode.nil?
-          mode = m
-        else
-          raise "expected only one encryption mode specifier"
-        end
+
+  def self.selector(*args, **opts)
+    x = nil
+    args.each do |a|
+      if opts[a]
+        raise "expected either switch of #{args.join(', ')}" unless x.nil?
+        x = a
       end
     end
-    mode
+    x
+  end
+
+
+  def self.obtain_password(**opts)
+    if $stdin.tty?
+      p1 = IO.console.getpass 'Enter password:'
+      p2 = IO.console.getpass 'Repeat password:'
+      raise 'passwords do not match' unless p1 == p2
+      p1
+    else
+      $stdin.readline.strip!
+    end
+  end
+
+
+  def self.decode_rclone_encryption(**opts)
+    x = nil
+    m = selector(:encrypt, :decrypt, **opts)
+    unless m.nil?
+      e = opts[:unicode] ? :base32768 : opts[:encoder].intern
+      t = opts[:transformer] == '-' ? false : opts[:transformer].intern
+      x = Rclone::Encryption::ROUTE.fetch(m).new(obtain_password(**opts), name_encoder: e, name_transformer: t)
+    end
+    x
   end
 
 
@@ -148,7 +170,7 @@ command [:new, :create] do |c|
   e.command :copy do |t|
     new_task_opts t
     t.action do |gopts, opts, args|
-      create_task(Rclone::Copy, *args, **opts)
+      create_rclone_task(Rclone::Copy, *args, **opts)
     end
   end
 
@@ -158,7 +180,7 @@ command [:new, :create] do |c|
   e.command :update do |t|
     new_task_opts t
     t.action do |gopts, opts, args|
-    create_task(Rclone::Update, *args, **opts)
+    create_rclone_task(Rclone::Update, *args, **opts)
   end
   end
 end

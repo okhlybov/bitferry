@@ -399,12 +399,13 @@ module Bitferry
 
     def to_ext
       tasks = live_tasks
+      v = vault.filter { |t| !Task[t].nil? && Task[t].live? } # Purge entries from non-existing (deleted) tasks
       {
         bitferry: "0",
         tag: tag,
         timestamp: (@timestamp = DateTime.now),
         tasks: tasks.empty? ? nil : tasks.collect(&:to_ext),
-        vault: vault.empty? ? nil : vault
+        vault: v.empty? ? nil : v
       }.compact
     end
 
@@ -482,7 +483,7 @@ module Bitferry
       s = json.fetch(:source)
       d = json.fetch(:destination)
       initialize(
-        Endpoint::ROUTE.fetch(s.fetch(:endpoint)).restore(s),
+        Endpoint::ROUTE.fetch(s.fetch(:endpoint)).restore(s), # FIXME make common method
         Endpoint::ROUTE.fetch(d.fetch(:endpoint)).restore(d),
         tag: json.fetch(:tag),
         timestamp: json.fetch(:timestamp)
@@ -501,9 +502,6 @@ module Bitferry
         encryption: encryption.nil? ? nil : encryption.to_ext
       }.compact
     end
-
-
-    def to_show = "#{self.class::SHOW_TAG} #{source.to_show} #{self.class::SHOW_OP} #{destination.to_show}"
 
 
     def intact? = live? && source.intact? && destination.intact?
@@ -571,6 +569,10 @@ module Bitferry
   module Rclone
 
 
+    extend  Logging
+    include Logging
+
+
     def self.executable = @executable ||= (rclone = ENV['RCLONE']).nil? ? 'rclone' : rclone
 
     
@@ -594,138 +596,123 @@ module Bitferry
 
 
   end
-  
+
 
   class Rclone::Encryption
 
 
-    OPERATION = Set[:encrypt, :decrypt]
-
-
-    attr_reader :operation
-
-
-    def operation=(op)
-      OPERATION.include?(@operation = op.intern) ? @operation : raise("bad encryption operation #{op}")
-    end
-
-
-    NAME_ENCODER = { nil => nil, base32: :base32, base64: :base64, base32768: :base32768 }
-
-
-    attr_reader :name_encoder
-
-
-    def name_encoder=(mode)
-      NAME_ENCODER.keys.include?(@name_encoder = mode.intern) ? @name_encoder : raise("bad file/directory name encoder #{mode}")
-    end
+    NAME_ENCODER = { nil => nil, false => nil, base32: :base32, base64: :base64, base32768: :base32768 }
 
 
     NAME_TRANSFORMER = { nil => nil, false => :off, encrypter: :standard, obfuscator: :obfuscate }
 
 
-    attr_reader :name_transformer
-
-
-    def name_transformer=(mode)
-      NAME_TRANSFORMER.keys.include?(@name_transformer = mode.intern) ? @name_transformer : raise("bad file/directory name transformer #{mode}")
+    def options
+      @options ||= [
+        NAME_ENCODER.fetch(@name_encoder).nil? ? nil : ['--crypt-filename-encoding', NAME_ENCODER[@name_encoder]],
+        NAME_TRANSFORMER.fetch(@name_transformer).nil? ? nil : ['--crypt-filename-encryption', NAME_TRANSFORMER[@name_transformer]]
+      ].compact.flatten
     end
 
 
-    attr_reader :token
-
-
-    private def initialize(operation, token, name_encoder: :base32, name_transformer: :encrypter)
-      self.operation = operation
-      self.name_encoder = name_encoder
-      self.name_transformer = name_transformer
+    private def initialize(token, name_encoder: :base32, name_transformer: :encrypter)
+      raise("bad file/directory name encoder #{name_encoder}") unless NAME_ENCODER.keys.include?(@name_encoder = name_encoder) 
+      raise("bad file/directory name transformer #{name_transformer}") unless NAME_TRANSFORMER.keys.include?(@name_transformer = name_transformer)
       @token = token
     end
 
 
-    private def create(operation, password, **)
-      initialize(operation, Rclone.obscure(password), **)
-    end
+    private def create(password, **) = initialize(Rclone.obscure(password), **)
 
 
-    private def restore(json)
-      rclone = json[:rclone]; rclone = {} if rclone.nil?
-      initialize(json.fetch(:operation), nil, name_encoder: rclone['name-encoder'], name_transformer: rclone['name-transformer'])
-    end
+    private def restore(json) = @options = json.fetch(:rclone, [])
 
 
-    def to_ext
-      {
-        operation: operation,
-        rclone: {
-          'name-encoder' => name_encoder,
-          'name-transformer' => name_transformer
-        }.compact
-      }
-    end
-
-
-    # [encrypted, decrypted]
-    private def endpoints(task)
-      case operation
-        when :encrypt then [task.destination, task.source]
-        when :decrypt then [task.source, task.destination]
-        else raise
-      end
-    end
-
-
-    private def install_token(task)
-      encrypted, decrypted = endpoints(task)
-      raise TypeError, "unsupported decrypted endpoint type" unless decrypted.is_a?(Endpoint::Bitferry)
-      Volume[decrypted.volume_tag].vault[task.tag] = token # Token is stored on the decrypted end only
-    end
-
-
-    private def obtain_token(task)
-      encrypted, decrypted = endpoints(task)
-      Volume[decrypted.volume_tag].vault.fetch(task.tag)
-    end
+    def to_ext = options.empty? ? {} : { rclone: options }
 
 
     def configure(task) = install_token(task)
 
 
-    def self.new(operation, password, **)
+    def process(task)
+      ENV['RCLONE_CRYPT_PASSWORD'] = obtain_token(task)
+    end
+
+
+    def arguments(task) = options + ['--crypt-remote', encrypted(task).root.to_s]
+
+
+    private def install_token(task)
+      x = decrypted(task)
+      raise TypeError, "unsupported decrypted endpoint type" unless x.is_a?(Endpoint::Bitferry)
+      Volume[x.volume_tag].vault[task.tag] = @token # Token is stored on the decrypted end only
+    end
+
+
+    private def obtain_token(task)
+      Volume[decrypted(task).volume_tag].vault.fetch(task.tag)
+    end
+
+
+    def self.new(*, **)
       obj = allocate
-      obj.send(:create, operation, password, **)
+      obj.send(:create, *, **)
       obj
     end
 
 
     def self.restore(json)
-      obj = allocate
+      obj = ROUTE.fetch(json.fetch(:operation).intern).allocate
       obj.send(:restore, json)
       obj
     end
 
 
-    def arguments(task)
-      ENV['RCLONE_CRYPT_PASSWORD'] = obtain_token(task)
-      args = [
-        '--crypt-remote',
-        case operation
-          when :encrypt then task.destination.root.to_s
-          when :decrypt then task.source.root.to_s
-          else raise
-        end
-      ]
-      args += ['--crypt-filename-encryption', NAME_TRANSFORMER[name_transformer].to_s] unless name_transformer.nil?
-      args += ['--crypt-filename-encoding', NAME_ENCODER[name_encoder].to_s] unless name_encoder.nil?
-      args += case operation
-        when :encrypt then [task.source.root.to_s, ':crypt:']
-        when :decrypt then [':crypt:', task.destination.root.to_s]
-        else raise
-      end
-    end
+  end
+
+
+  class Rclone::Encrypt < Rclone::Encryption
+
+
+    def encrypted(task) = task.destination
+
+
+    def decrypted(task) = task.source
+
+
+    def to_ext = super.merge(operation: :encrypt)
+
+
+    def show_operation = 'encrypt+'
+
+
+    def arguments(task) = super + [decrypted(task).root.to_s, ':crypt:']
 
 
   end
+
+
+  class Rclone::Decrypt < Rclone::Encryption
+
+    
+    def encrypted(task) = task.source
+
+
+    def decrypted(task) = task.destination
+
+
+    def to_ext = super.merge(operation: :decrypt)
+
+
+    def show_operation = 'decrypt+'
+
+
+    def arguments(task) = super + [':crypt:', decrypted(task).root.to_s]
+
+  end
+
+
+  Rclone::Encryption::ROUTE = { encrypt: Rclone::Encrypt, decrypt: Rclone::Decrypt }
 
 
   class Rclone::Task < Task
@@ -742,6 +729,15 @@ module Bitferry
       @encryption = encryption
       encryption.configure(self) unless encryption.nil?
     end
+
+
+    def show_status = "#{show_operation} #{source.show_status} #{show_direction} #{destination.show_status}"
+
+
+    def show_operation = encryption.nil? ? '' : encryption.show_operation
+
+
+    def show_direction = '-->'
 
 
     def arguments
@@ -761,7 +757,8 @@ module Bitferry
 
 
     def process
-      cmd = [Rclone.executable] + [] + arguments
+      encryption.process(self) unless encryption.nil?
+      cmd = [Rclone.executable] + arguments
       log.info("processing task #{tag}")
       cms = cmd.collect(&:shellescape).join(' ')
       puts cms if Bitferry.verbosity == :verbose
@@ -787,14 +784,13 @@ module Bitferry
   class Rclone::Copy < Rclone::Task
 
 
-    SHOW_TAG = :copy
-    SHOW_OP  = '-->'
-
-    
     def arguments = ['copy'] + super
 
 
     def to_ext = super.merge(task: :copy)
+
+
+    def show_operation = super + 'copy'
 
 
   end
@@ -803,14 +799,13 @@ module Bitferry
   class Rclone::Update < Rclone::Task
 
 
-    SHOW_TAG = :update
-    SHOW_OP  = '-->'
-
-
     def arguments = ['copy', '--update'] + super
 
 
     def to_ext = super.merge(task: :update)
+
+
+    def show_operation = super + 'update'
 
 
   end
@@ -852,7 +847,7 @@ module Bitferry
     end
 
 
-    def to_show = root.to_s
+    def show_status = root.to_s
 
 
     def intact? = true
@@ -906,7 +901,7 @@ module Bitferry
     end
 
 
-    def to_show = intact? ? "#{volume_tag}:#{path}" : "{#{volume_tag}}:#{path}"
+    def show_status = intact? ? "#{volume_tag}:#{path}" : "{#{volume_tag}}:#{path}"
 
 
     def intact? = !Volume[volume_tag].nil?
