@@ -181,9 +181,21 @@ command [:new, :create] do |c|
   e.command :update do |t|
     new_task_opts t
     t.action do |gopts, opts, args|
-    create_rclone_task(Rclone::Update, *args, **opts)
+      create_rclone_task(Rclone::Update, *args, **opts)
+    end
   end
+
+
+  new_task_args e
+  e.desc 'Create new synchronization task'
+  e.command :synchronize do |t|
+    new_task_opts t
+    t.action do |gopts, opts, args|
+      create_rclone_task(Rclone::Synchronize, *args, **opts)
+    end
   end
+
+  
 end
 
 

@@ -822,7 +822,22 @@ module Bitferry
   end
 
 
-  Task::ROUTE = { 'copy' => Rclone::Copy, 'update' => Rclone::Update }
+  class Rclone::Synchronize < Rclone::Task
+
+
+    def arguments = ['sync'] + super
+
+
+    def to_ext = super.merge(operation: :synchronize)
+
+
+    def show_operation = super + 'synchronize'
+
+
+  end
+
+
+  Task::ROUTE = { 'copy' => Rclone::Copy, 'update' => Rclone::Update, 'synchronize' => Rclone::Synchronize }
 
 
   class Endpoint
