@@ -256,11 +256,11 @@ module Bitferry
     end
 
 
-    private def initialize(root, tag: Bitferry.tag, timestamp: DateTime.now)
+    private def initialize(root, tag: Bitferry.tag, modified: DateTime.now)
       @tag = tag
       @generation = 0
       @vault = {}
-      @timestamp = timestamp
+      @modified = modified
       @root = Pathname.new(root).realdirpath
     end
 
@@ -275,8 +275,8 @@ module Bitferry
     private def restore(root)
       json = JSON.load_file(storage = Pathname(root).join(STORAGE), { symbolize_names: true })
       raise IOError, "bad volume storage #{storage}" unless json.fetch(:bitferry) == "0"
-      initialize(root, tag: json.fetch(:tag), timestamp: DateTime.parse(json.fetch(:timestamp)))
-      json.fetch(:tasks, []).each { |json| Task::ROUTE.fetch(json.fetch(:task)).restore(json) }
+      initialize(root, tag: json.fetch(:tag), modified: DateTime.parse(json.fetch(:modified)))
+      json.fetch(:tasks, []).each { |json| Task::ROUTE.fetch(json.fetch(:operation)).restore(json) }
       @vault = json.fetch(:vault, {}).transform_keys { |key| key.to_s }
       @state = :intact
       @modified = false
@@ -403,7 +403,7 @@ module Bitferry
       {
         bitferry: "0",
         tag: tag,
-        timestamp: (@timestamp = DateTime.now),
+        modified: (@modified = DateTime.now),
         tasks: tasks.empty? ? nil : tasks.collect(&:to_ext),
         vault: v.empty? ? nil : v
       }.compact
@@ -463,10 +463,10 @@ module Bitferry
     end
 
 
-    private def initialize(source, destination, tag: Bitferry.tag, timestamp: DateTime.now)
+    private def initialize(source, destination, tag: Bitferry.tag, modified: DateTime.now)
       @tag = tag
       @generation = 0
-      @timestamp = timestamp
+      @modified = modified
       @source = source
       @destination = destination
     end
@@ -486,7 +486,7 @@ module Bitferry
         Endpoint::ROUTE.fetch(s.fetch(:endpoint)).restore(s), # FIXME make common method
         Endpoint::ROUTE.fetch(d.fetch(:endpoint)).restore(d),
         tag: json.fetch(:tag),
-        timestamp: json.fetch(:timestamp)
+        modified: json.fetch(:modified)
       )
       @state = :intact
       log.info("restored task #{tag}")
@@ -498,8 +498,7 @@ module Bitferry
         tag: tag,
         source: source.to_ext,
         destination: destination.to_ext,
-        timestamp: @timestamp,
-        encryption: encryption.nil? ? nil : encryption.to_ext
+        modified: @modified
       }.compact
     end
 
@@ -515,7 +514,7 @@ module Bitferry
 
     def touch
       @generation = [source.generation, destination.generation].max + 1
-      @timestamp = DateTime.now
+      @modified = DateTime.now
     end
 
 
@@ -634,9 +633,7 @@ module Bitferry
     def configure(task) = install_token(task)
 
 
-    def process(task)
-      ENV['RCLONE_CRYPT_PASSWORD'] = obtain_token(task)
-    end
+    def process(task) = ENV['RCLONE_CRYPT_PASSWORD'] = obtain_token(task)
 
 
     def arguments(task) = options + ['--crypt-remote', encrypted(task).root.to_s]
@@ -724,9 +721,14 @@ module Bitferry
     attr_reader :token
 
 
-    def initialize(*args, encryption: nil, **opts)
+    attr_reader :options
+
+
+    def initialize(*args, encryption: nil, preserve_metadata: true, **opts)
       super(*args, **opts)
+      @options = []
       @encryption = encryption
+      @options << '--metadata' if preserve_metadata
       encryption.configure(self) unless encryption.nil?
     end
 
@@ -751,7 +753,7 @@ module Bitferry
         Bitferry.verbosity == :verbose ? '--progress' : nil,
         Bitferry.simulate? ? '--dry-run' : nil,
         '--filter', "- #{Volume::STORAGE}", '--filter', "- #{Volume::STORAGE_}"
-      ].compact
+      ].compact + options
       args += encryption.nil? ? [source.root.to_s, destination.root.to_s] : encryption.arguments(self)
     end
 
@@ -772,9 +774,18 @@ module Bitferry
     end
 
 
+    def to_ext
+      super.merge(
+        encryption: encryption.nil? ? nil : encryption.to_ext,
+        rclone: options.empty? ? nil : options
+      ).compact
+    end
+
+
     private def restore(json)
       super(json)
       @encryption = Rclone::Encryption.restore(json[:encryption])
+      @options = json.fetch(:rclone, [])
     end
 
 
@@ -787,7 +798,7 @@ module Bitferry
     def arguments = ['copy'] + super
 
 
-    def to_ext = super.merge(task: :copy)
+    def to_ext = super.merge(operation: :copy)
 
 
     def show_operation = super + 'copy'
@@ -802,7 +813,7 @@ module Bitferry
     def arguments = ['copy', '--update'] + super
 
 
-    def to_ext = super.merge(task: :update)
+    def to_ext = super.merge(operation: :update)
 
 
     def show_operation = super + 'update'

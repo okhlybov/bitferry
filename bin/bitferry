@@ -99,9 +99,9 @@ command [:new, :create] do |c|
   end
 
 
-  def create_rclone_task(task, *args, **)
+  def create_rclone_task(task, *args, **opts)
     begin
-      task.new(decode_endpoint(args[0]), decode_endpoint(args[1]), encryption: decode_rclone_encryption(**))
+      task.new(decode_endpoint(args[0]), decode_endpoint(args[1]), encryption: decode_rclone_encryption(**opts), preserve_metadata: opts[:metadata])
     rescue => e
       log.error(e.message)
       raise
@@ -121,6 +121,7 @@ command [:new, :create] do |c|
     x.switch [:unicode, :u], { desc: 'Force unicode-aware file name encoding (overrides -c)', negatable: false }
     x.switch [:encrypt, :e], { desc: 'Encrypt files in destination', negatable: false }
     x.switch [:decrypt, :d], { desc: 'Decrypt files from source', negatable: false }
+    x.switch [:metadata, :M], { desc: 'Preserve file metadata', default_value: true }
   end
   
   
