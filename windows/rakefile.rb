@@ -70,11 +70,9 @@ require 'rake/clean'
 CLEAN << Build
 CLOBBER << Cache
 
-ENV['GEM_HOME'] = nil # Prevent the Ruby managers (RVM etc.) interference
-
 def start(cmd)
   if Gem::Platform.local.os == "linux"
-    sh "wine cmd /c #{cmd}"
+    sh "env -i wine cmd /c #{cmd}"
   else
     sh cmd
   end
@@ -96,13 +94,20 @@ namespace :ruby do
   end
   task :configure => :normalize do
     cd "#{Build}/ruby/bin" do
-      start "gem install fxruby"
+      start 'gem install fxruby'
     end
   end
-  task :fix => :configure do
+  task :ruby => :configure do
     cd "#{Build}/ruby" do
       rm_rf Dir['include', 'share', 'packages', 'ridk_use']
-      rm_rf Dir['lib/*.a', 'lib/pkgconfig', 'lib/ruby/site_ruby/*/*', 'lib/ruby/gems/*/cache/*', 'lib/ruby/gems/*/doc/*']
+      rm_rf Dir['bin/ridk*', 'lib/*.a', 'lib/pkgconfig', 'lib/ruby/gems/*/cache/*', 'lib/ruby/gems/*/doc/*']
+    end
+  end
+  task :fxruby => :ruby do
+    cd Dir["#{Build}/ruby/lib/ruby/gems/*/gems/fxruby-*"].first do
+      rb = RbConfig::CONFIG['MAJOR'] + '.' + RbConfig::CONFIG['MINOR']
+      Dir.children('.').delete_if { |x| /(lib|ports)$/.match?(x) }.each { |x| rm_rf x }
+      Dir['lib/*'].delete_if { |x| /^lib\/(#{rb}|fox16)/.match?(x) }.each { |x| rm_rf x }
     end
   end
 end
@@ -119,4 +124,4 @@ namespace :rclone do
   end
 end
 
-task :default => :extract
+task :default => 'ruby:fxruby'
