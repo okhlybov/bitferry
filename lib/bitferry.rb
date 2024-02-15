@@ -266,7 +266,7 @@ module Bitferry
     end
 
 
-    private def initialize(root, tag: Bitferry.tag, modified: DateTime.now)
+    def initialize(root, tag: Bitferry.tag, modified: DateTime.now)
       @tag = tag
       @generation = 0
       @vault = {}
@@ -275,14 +275,14 @@ module Bitferry
     end
 
 
-    private def create(*, **)
+    def create(*, **)
       initialize(*, **)
       @state = :pristine
       @modified = true
     end
 
 
-    private def restore(root)
+    def restore(root)
       json = JSON.load_file(storage = Pathname(root).join(STORAGE), { symbolize_names: true })
       raise IOError, "bad volume storage #{storage}" unless json.fetch(:bitferry) == "0"
       initialize(root, tag: json.fetch(:tag), modified: DateTime.parse(json.fetch(:modified)))
@@ -354,14 +354,14 @@ module Bitferry
     end
 
 
-    private def committed
+    def committed
       x = tasks.collect { |t| t.generation }.min
       @generation = x ? x : 0
       @modified = false
     end
 
 
-    private def store
+    def store
       tasks.each(&:commit)
       json = JSON.pretty_generate(to_ext)
       if Bitferry.simulate?
@@ -379,7 +379,7 @@ module Bitferry
     end
 
 
-    private def format
+    def format
       raise IOError.new("refuse to overwrite existing volume storage #{storage}") if !Volume.force_overwrite? && File.exist?(storage)
       if Bitferry.simulate?
         log.info("skipped storage formatting (simulation)")
@@ -392,7 +392,7 @@ module Bitferry
     end
 
 
-    private def remove
+    def remove
       @state = nil
       @@registry.delete(root)
       unless Bitferry.simulate?
@@ -450,18 +450,18 @@ module Bitferry
     include Logging
 
 
-    attr_reader :source, :destination
-
-
     attr_reader :tag
 
 
     attr_reader :generation
 
 
-    def self.new(source, destination, **)
+    attr_reader :modified
+
+
+    def self.new(*, **)
       task = allocate
-      task.send(:create, source, destination, **)
+      task.send(:create, *, **)
       register(task)
     end
 
@@ -473,59 +473,41 @@ module Bitferry
     end
 
 
-    private def initialize(source, destination, tag: Bitferry.tag, modified: DateTime.now)
+    def initialize(tag: Bitferry.tag, modified: DateTime.now)
       @tag = tag
       @generation = 0
       @modified = modified
-      @source = source
-      @destination = destination
     end
 
 
-    private def create(*, **)
+    def create(*, **)
       initialize(*, **)
       @state = :pristine
       touch
     end
 
 
-    private def restore(json)
-      s = json.fetch(:source)
-      d = json.fetch(:destination)
-      initialize(
-        Endpoint::ROUTE.fetch(s.fetch(:endpoint)).restore(s), # FIXME make common method
-        Endpoint::ROUTE.fetch(d.fetch(:endpoint)).restore(d),
-        tag: json.fetch(:tag),
-        modified: json.fetch(:modified)
-      )
+    def restore(json)
       @state = :intact
       log.info("restored task #{tag}")
     end
 
 
+    def restore_endpoint(x) = Endpoint::ROUTE.fetch(x.fetch(:endpoint)).restore(x)
+
+
     def to_ext
       {
         tag: tag,
-        source: source.to_ext,
-        destination: destination.to_ext,
         modified: @modified
       }.compact
     end
 
 
-    def intact? = live? && source.intact? && destination.intact?
-
-
     def live? = !@state.nil? && @state != :removing
 
 
-    def refers?(volume) = source.refers?(volume) || destination.refers?(volume)
-
-
-    def touch
-      @generation = [source.generation, destination.generation].max + 1
-      @modified = DateTime.now
-    end
+    def touch = @modified = DateTime.now
 
 
     def delete
@@ -624,17 +606,17 @@ module Bitferry
     end
 
 
-    private def initialize(token, name_encoder: :base32, name_transformer: :encrypter)
+    def initialize(token, name_encoder: :base32, name_transformer: :encrypter)
       raise("bad file/directory name encoder #{name_encoder}") unless NAME_ENCODER.keys.include?(@name_encoder = name_encoder) 
       raise("bad file/directory name transformer #{name_transformer}") unless NAME_TRANSFORMER.keys.include?(@name_transformer = name_transformer)
       @token = token
     end
 
 
-    private def create(password, **) = initialize(Rclone.obscure(password), **)
+    def create(password, **) = initialize(Rclone.obscure(password), **)
 
 
-    private def restore(json) = @options = json.fetch(:rclone, [])
+    def restore(json) = @options = json.fetch(:rclone, [])
 
 
     def to_ext = options.empty? ? {} : { rclone: options }
@@ -649,14 +631,14 @@ module Bitferry
     def arguments(task) = options + ['--crypt-remote', encrypted(task).root.to_s]
 
 
-    private def install_token(task)
+    def install_token(task)
       x = decrypted(task)
       raise TypeError, "unsupported decrypted endpoint type" unless x.is_a?(Endpoint::Bitferry)
       Volume[x.volume_tag].vault[task.tag] = @token # Token is stored on the decrypted end only
     end
 
 
-    private def obtain_token(task)
+    def obtain_token(task)
       Volume[decrypted(task).volume_tag].vault.fetch(task.tag)
     end
 
@@ -725,6 +707,9 @@ module Bitferry
   class Rclone::Task < Task
 
 
+    attr_reader :source, :destination
+
+
     attr_reader :encryption
 
 
@@ -734,11 +719,18 @@ module Bitferry
     attr_reader :options
 
 
-    def initialize(*args, encryption: nil, preserve_metadata: true, **opts)
-      super(*args, **opts)
-      @options = []
+    def initialize(source, destination, encryption: nil, options: [], **opts)
+      super(**opts)
+      @source = source
+      @options = options
+      @destination = destination
       @encryption = encryption
-      @options << '--metadata' if preserve_metadata
+    end
+
+
+    def create(*, preserve_metadata: true, options: [], **opts)
+      options << '--metadata' if preserve_metadata
+      super(*, options: options, **opts)
       encryption.configure(self) unless encryption.nil?
     end
 
@@ -752,26 +744,41 @@ module Bitferry
     def show_direction = '-->'
 
 
-    def arguments
-      args = [
+    def intact? = live? && source.intact? && destination.intact?
+
+
+    def refers?(volume) = source.refers?(volume) || destination.refers?(volume)
+
+
+    def touch
+      @generation = [source.generation, destination.generation].max + 1
+      super
+    end
+
+    
+    def common_options
+      [
         '--config', Bitferry.windows? ? 'NUL' : '/dev/null',
-          case Bitferry.verbosity
-            when :verbose then '--verbose'
-            when :quiet then '--quiet'
-            else nil
-          end,
+        case Bitferry.verbosity
+          when :verbose then '--verbose'
+          when :quiet then '--quiet'
+          else nil
+        end,
         Bitferry.verbosity == :verbose ? '--progress' : nil,
         Bitferry.simulate? ? '--dry-run' : nil,
-        '--filter', "- #{Volume::STORAGE}", '--filter', "- #{Volume::STORAGE_}"
-      ].compact + options
-      args += encryption.nil? ? [source.root.to_s, destination.root.to_s] : encryption.arguments(self)
+      ].compact
     end
 
 
-    def process
-      encryption.process(self) unless encryption.nil?
-      cmd = [Rclone.executable] + arguments
-      log.info("processing task #{tag}")
+    def process_arguments
+      ['--filter', "- #{Volume::STORAGE}", '--filter', "- #{Volume::STORAGE_}"] + common_options + options + (
+        encryption.nil? ? [source.root.to_s, destination.root.to_s] : encryption.arguments(self)
+      )
+    end
+
+
+    def execute(*args)
+      cmd = [Rclone.executable] + args
       cms = cmd.collect(&:shellescape).join(' ')
       puts cms if Bitferry.verbosity == :verbose
       log.info(cms)
@@ -784,18 +791,33 @@ module Bitferry
     end
 
 
+    def process
+      log.info("processing task #{tag}")
+      encryption.process(self) unless encryption.nil?
+      execute(*process_arguments)
+    end
+
+
     def to_ext
       super.merge(
+        source: source.to_ext,
+        destination: destination.to_ext,
         encryption: encryption.nil? ? nil : encryption.to_ext,
         rclone: options.empty? ? nil : options
       ).compact
     end
 
 
-    private def restore(json)
+    def restore(json)
+      initialize(
+        restore_endpoint(json.fetch(:source)),
+        restore_endpoint(json.fetch(:destination)),
+        tag: json.fetch(:tag),
+        modified: json.fetch(:modified, DateTime.now),
+        options: json.fetch(:rclone, []),
+        encryption: json[:encryption].nil? ? nil : Rclone::Encryption.restore(json[:encryption])
+      )
       super(json)
-      @encryption = json[:encryption].nil? ? nil : Rclone::Encryption.restore(json[:encryption])
-      @options = json.fetch(:rclone, [])
     end
 
 
@@ -805,7 +827,7 @@ module Bitferry
   class Rclone::Copy < Rclone::Task
 
 
-    def arguments = ['copy'] + super
+    def process_arguments = ['copy'] + super
 
 
     def to_ext = super.merge(operation: :copy)
@@ -820,7 +842,7 @@ module Bitferry
   class Rclone::Update < Rclone::Task
 
 
-    def arguments = ['copy', '--update'] + super
+    def process_arguments = ['copy', '--update'] + super
 
 
     def to_ext = super.merge(operation: :update)
@@ -835,7 +857,7 @@ module Bitferry
   class Rclone::Synchronize < Rclone::Task
 
 
-    def arguments = ['sync'] + super
+    def process_arguments = ['sync'] + super
 
 
     def to_ext = super.merge(operation: :synchronize)
@@ -869,10 +891,10 @@ module Bitferry
     attr_reader :root
 
 
-    private def initialize(root) = @root = Pathname.new(root).realdirpath
+    def initialize(root) = @root = Pathname.new(root).realdirpath
 
 
-    private def restore(json) = initialize(json.fetch(:root))
+    def restore(json) = initialize(json.fetch(:root))
 
 
     def to_ext
@@ -915,14 +937,14 @@ module Bitferry
     def root = Volume[volume_tag].root.join(path)
 
 
-    private def initialize(volume, path)
+    def initialize(volume, path)
       @volume_tag = volume.tag
       @path = Pathname.new(path)
       raise ArgumentError, "expected relative path but got #{self.path}" unless (/^[\.\/]/ =~ self.path.to_s).nil?
     end
 
 
-    private def restore(json)
+    def restore(json)
       @volume_tag = json.fetch(:volume)
       @path = Pathname.new(json.fetch(:path))
     end
