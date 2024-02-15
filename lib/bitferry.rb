@@ -283,11 +283,11 @@ module Bitferry
 
 
     def restore(root)
-      json = JSON.load_file(storage = Pathname(root).join(STORAGE), { symbolize_names: true })
-      raise IOError, "bad volume storage #{storage}" unless json.fetch(:bitferry) == "0"
-      initialize(root, tag: json.fetch(:tag), modified: DateTime.parse(json.fetch(:modified)))
-      json.fetch(:tasks, []).each { |json| Task::ROUTE.fetch(json.fetch(:operation)).restore(json) }
-      @vault = json.fetch(:vault, {}).transform_keys { |key| key.to_s }
+      hash = JSON.load_file(storage = Pathname(root).join(STORAGE), { symbolize_names: true })
+      raise IOError, "bad volume storage #{storage}" unless hash.fetch(:bitferry) == "0"
+      initialize(root, tag: hash.fetch(:tag), modified: DateTime.parse(hash.fetch(:modified)))
+      hash.fetch(:tasks, []).each { |hash| Task::ROUTE.fetch(hash.fetch(:operation)).restore(hash) }
+      @vault = hash.fetch(:vault, {}).transform_keys { |key| key.to_s }
       @state = :intact
       @modified = false
     end
@@ -363,12 +363,12 @@ module Bitferry
 
     def store
       tasks.each(&:commit)
-      json = JSON.pretty_generate(to_ext)
+      hash = JSON.pretty_generate(externalize)
       if Bitferry.simulate?
         log.info("skipped volume #{tag} storage modification (simulation)")
       else
         begin
-          File.write(storage_, json)
+          File.write(storage_, hash)
           FileUtils.mv(storage_, storage)
           log.info("written volume #{tag} storage #{storage}")
         ensure
@@ -407,14 +407,14 @@ module Bitferry
     end
 
 
-    def to_ext
+    def externalize
       tasks = live_tasks
       v = vault.filter { |t| !Task[t].nil? && Task[t].live? } # Purge entries from non-existing (deleted) tasks
       {
         bitferry: "0",
         tag: tag,
         modified: (@modified = DateTime.now),
-        tasks: tasks.empty? ? nil : tasks.collect(&:to_ext),
+        tasks: tasks.empty? ? nil : tasks.collect(&:externalize),
         vault: v.empty? ? nil : v
       }.compact
     end
@@ -466,9 +466,9 @@ module Bitferry
     end
 
 
-    def self.restore(json)
+    def self.restore(hash)
       task = allocate
-      task.send(:restore, json)
+      task.send(:restore, hash)
       register(task)
     end
 
@@ -487,7 +487,7 @@ module Bitferry
     end
 
 
-    def restore(json)
+    def restore(hash)
       @state = :intact
       log.info("restored task #{tag}")
     end
@@ -496,7 +496,7 @@ module Bitferry
     def restore_endpoint(x) = Endpoint::ROUTE.fetch(x.fetch(:endpoint)).restore(x)
 
 
-    def to_ext
+    def externalize
       {
         tag: tag,
         modified: @modified
@@ -616,10 +616,10 @@ module Bitferry
     def create(password, **) = initialize(Rclone.obscure(password), **)
 
 
-    def restore(json) = @options = json.fetch(:rclone, [])
+    def restore(hash) = @options = hash.fetch(:rclone, [])
 
 
-    def to_ext = options.empty? ? {} : { rclone: options }
+    def externalize = options.empty? ? {} : { rclone: options }
 
 
     def configure(task) = install_token(task)
@@ -650,9 +650,9 @@ module Bitferry
     end
 
 
-    def self.restore(json)
-      obj = ROUTE.fetch(json.fetch(:operation).intern).allocate
-      obj.send(:restore, json)
+    def self.restore(hash)
+      obj = ROUTE.fetch(hash.fetch(:operation).intern).allocate
+      obj.send(:restore, hash)
       obj
     end
 
@@ -669,7 +669,7 @@ module Bitferry
     def decrypted(task) = task.source
 
 
-    def to_ext = super.merge(operation: :encrypt)
+    def externalize = super.merge(operation: :encrypt)
 
 
     def show_operation = 'encrypt+'
@@ -690,7 +690,7 @@ module Bitferry
     def decrypted(task) = task.destination
 
 
-    def to_ext = super.merge(operation: :decrypt)
+    def externalize = super.merge(operation: :decrypt)
 
 
     def show_operation = 'decrypt+'
@@ -798,26 +798,26 @@ module Bitferry
     end
 
 
-    def to_ext
+    def externalize
       super.merge(
-        source: source.to_ext,
-        destination: destination.to_ext,
-        encryption: encryption.nil? ? nil : encryption.to_ext,
+        source: source.externalize,
+        destination: destination.externalize,
+        encryption: encryption.nil? ? nil : encryption.externalize,
         rclone: options.empty? ? nil : options
       ).compact
     end
 
 
-    def restore(json)
+    def restore(hash)
       initialize(
-        restore_endpoint(json.fetch(:source)),
-        restore_endpoint(json.fetch(:destination)),
-        tag: json.fetch(:tag),
-        modified: json.fetch(:modified, DateTime.now),
-        options: json.fetch(:rclone, []),
-        encryption: json[:encryption].nil? ? nil : Rclone::Encryption.restore(json[:encryption])
+        restore_endpoint(hash.fetch(:source)),
+        restore_endpoint(hash.fetch(:destination)),
+        tag: hash.fetch(:tag),
+        modified: hash.fetch(:modified, DateTime.now),
+        options: hash.fetch(:rclone, []),
+        encryption: hash[:encryption].nil? ? nil : Rclone::Encryption.restore(hash[:encryption])
       )
-      super(json)
+      super(hash)
     end
 
 
@@ -830,7 +830,7 @@ module Bitferry
     def process_arguments = ['copy'] + super
 
 
-    def to_ext = super.merge(operation: :copy)
+    def externalize = super.merge(operation: :copy)
 
 
     def show_operation = super + 'copy'
@@ -845,7 +845,7 @@ module Bitferry
     def process_arguments = ['copy', '--update'] + super
 
 
-    def to_ext = super.merge(operation: :update)
+    def externalize = super.merge(operation: :update)
 
 
     def show_operation = super + 'update'
@@ -860,7 +860,7 @@ module Bitferry
     def process_arguments = ['sync'] + super
 
 
-    def to_ext = super.merge(operation: :synchronize)
+    def externalize = super.merge(operation: :synchronize)
 
 
     def show_operation = super + 'synchronize'
@@ -875,9 +875,9 @@ module Bitferry
   class Endpoint
 
 
-    def self.restore(json)
+    def self.restore(hash)
       endpoint = allocate
-      endpoint.send(:restore, json)
+      endpoint.send(:restore, hash)
       endpoint
     end
 
@@ -894,10 +894,10 @@ module Bitferry
     def initialize(root) = @root = Pathname.new(root).realdirpath
 
 
-    def restore(json) = initialize(json.fetch(:root))
+    def restore(hash) = initialize(hash.fetch(:root))
 
 
-    def to_ext
+    def externalize
       {
         endpoint: :local,
         root: root
@@ -944,13 +944,13 @@ module Bitferry
     end
 
 
-    def restore(json)
-      @volume_tag = json.fetch(:volume)
-      @path = Pathname.new(json.fetch(:path))
+    def restore(hash)
+      @volume_tag = hash.fetch(:volume)
+      @path = Pathname.new(hash.fetch(:path))
     end
 
 
-    def to_ext
+    def externalize
       {
         endpoint: :bitferry,
         volume: volume_tag,
