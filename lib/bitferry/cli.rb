@@ -222,6 +222,21 @@ command [:new, :create] do |c|
   end
 
 
+  e.arg '[remote:]source'
+  e.arg '[remote:]repository'
+  e.desc 'Create new restore task'
+  e.command :restore do |t|
+    t.action do |gopts, opts, args|
+      begin
+        Restic::Restore.new(decode_endpoint(args[0]), decode_endpoint(args[1]), obtain_password)
+      rescue => e
+        log.error(e.message)
+        raise
+      end
+    end
+  end
+
+
 end
 
 

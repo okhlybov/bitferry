@@ -956,7 +956,9 @@ module Bitferry
       super
     end
 
-    
+    def format = nil
+
+
     def common_options
       [
         case Bitferry.verbosity
@@ -1042,11 +1044,6 @@ module Bitferry
     def process_arguments = ['backup', '.', '--tag', tag] + super
 
 
-    def process
-      super
-    end
-
-
     def format
       if Bitferry.simulate?
         log.info('skipped repository initialization (simulation)')
@@ -1067,12 +1064,46 @@ module Bitferry
   end
 
 
+  class Restic::Restore < Restic::Task
+
+
+    attr_reader :snapshot
+
+
+    def create(*, snapshot: nil, **opts)
+      super(*, **opts)
+      @snapshot = snapshot
+    end
+
+
+    def show_operation = 'decrypt+restore'
+
+
+    def show_direction = '<--'
+
+
+    def externalize = super.merge({ operation: :restore, snapshot: snapshot }.compact)
+
+
+    def restore(hash)
+      super
+      @snapshot = hash[:snapshot]
+    end
+
+
+    def process_arguments = ['restore', snapshot.nil? ? 'latest' : snapshot, '--target', '.', '--tag', tag] + super
+
+  
+  end
+
+
   Task::ROUTE = {
     'copy' => Rclone::Copy,
     'update' => Rclone::Update,
     'synchronize' => Rclone::Synchronize,
     'equalize' => Rclone::Equalize,
-    'backup' => Restic::Backup
+    'backup' => Restic::Backup,
+    'restore' => Restic::Restore
   }
 
 
