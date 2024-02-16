@@ -520,8 +520,8 @@ module Bitferry
 
     def commit
       case @state
-      when :removing
-        @state = nil
+      when :pristine then format
+      when :removing then @state = nil
       end
     end
 
@@ -570,7 +570,7 @@ module Bitferry
     
     def self.exec(*args)
       cmd = [executable] + args
-      log.info(cmd.collect(&:shellescape).join(' '))
+      log.debug(cmd.collect(&:shellescape).join(' '))
       stdout, status = Open3.capture2(*cmd)
       unless status.success?
         msg = "rclone exit code #{status.to_i}"
@@ -634,7 +634,7 @@ module Bitferry
 
     def install_token(task)
       x = decrypted(task)
-      raise TypeError, "unsupported decrypted endpoint type" unless x.is_a?(Endpoint::Bitferry)
+      raise TypeError, 'unsupported unencrypted endpoint type' unless x.is_a?(Endpoint::Bitferry)
       Volume[x.volume_tag].vault[task.tag] = @token # Token is stored on the decrypted end only
     end
 
@@ -755,6 +755,9 @@ module Bitferry
     end
 
     
+    def format = nil
+
+
     def common_options
       [
         '--config', Bitferry.windows? ? 'NUL' : '/dev/null',
@@ -871,7 +874,7 @@ module Bitferry
   class Rclone::Equalize < Rclone::Task
 
 
-    def process_arguments = ['bisync'] + super
+    def process_arguments = ['bisync', '--resync'] + super
 
 
     def externalize = super.merge(operation: :equalize)
@@ -886,7 +889,191 @@ module Bitferry
   end
 
 
-  Task::ROUTE = { 'copy' => Rclone::Copy, 'update' => Rclone::Update, 'synchronize' => Rclone::Synchronize, 'equalize' => Rclone::Equalize }
+  module Restic
+
+
+    extend  Logging
+    include Logging
+
+
+    def self.executable = @executable ||= (restic = ENV['RESTIC']).nil? ? 'restic' : restic
+
+    
+    def self.exec(*args)
+      cmd = [executable] + args
+      log.debug(cmd.collect(&:shellescape).join(' '))
+      stdout, status = Open3.capture2(*cmd)
+      unless status.success?
+        msg = "restic exit code #{status.to_i}"
+        log.error(msg)
+        raise RuntimeError, msg
+      end
+      stdout.strip
+    end
+
+
+  end
+
+
+  class Restic::Task < Task
+
+
+    attr_reader :directory, :repository
+
+
+    attr_reader :options
+
+
+    def initialize(directory, repository, options: [], **opts)
+      super(**opts)
+      @options = options
+      @directory = directory
+      @repository = repository
+    end
+
+
+    def create(directory, repository, password, options: [], **opts)
+      super(directory, repository, options: options, **opts)
+      raise TypeError, 'unsupported unencrypted endpoint type' unless directory.is_a?(Endpoint::Bitferry)
+      Volume[directory.volume_tag].vault[tag] = Rclone.obscure(@password = password) # Token is stored on the decrypted end only
+    end
+
+
+    def password = @password ||= Rclone.reveal(Volume[directory.volume_tag].vault.fetch(tag))
+
+    
+    def show_status = "#{show_operation} #{directory.show_status} #{show_direction} #{repository.show_status}"
+
+
+    def intact? = live? && directory.intact? && repository.intact?
+
+
+    def refers?(volume) = directory.refers?(volume) || repository.refers?(volume)
+
+
+    def touch
+      @generation = [directory.generation, repository.generation].max + 1
+      super
+    end
+
+    
+    def common_options
+      [
+        case Bitferry.verbosity
+          when :verbose then '--verbose'
+          when :quiet then '--quiet'
+          else nil
+        end,
+        Bitferry.simulate? ? '--dry-run' : nil,
+        '--repo', repository.root.to_s
+      ].compact
+    end
+
+
+    def process_arguments = ['--exclude', Volume::STORAGE, '--exclude', Volume::STORAGE_] + common_options + options
+
+
+    def execute(*args, **)
+      cmd = [Restic.executable] + args
+      ENV['RESTIC_PASSWORD'] = password
+      cms = cmd.collect(&:shellescape).join(' ')
+      puts cms if Bitferry.verbosity == :verbose
+      log.info(cms)
+      case system(*cmd, **) # using system() to prevent gobbling output channels
+        when nil then log.error("restic execution failure")
+        when false then log.error("restic exit code #{$?.to_i}")
+        else return true
+      end
+      false
+    end
+
+
+    def process
+      log.info("processing task #{tag}")
+      execute(*process_arguments, chdir: directory.root)
+    end
+
+
+    def externalize
+      super.merge(
+        directory: directory.externalize,
+        repository: repository.externalize,
+        restic: options.empty? ? nil : options
+      ).compact
+    end
+
+
+    def restore(hash)
+      initialize(
+        restore_endpoint(hash.fetch(:directory)),
+        restore_endpoint(hash.fetch(:repository)),
+        tag: hash.fetch(:tag),
+        modified: hash.fetch(:modified, DateTime.now),
+        options: hash.fetch(:restic, [])
+      )
+      super(hash)
+    end
+
+
+  end
+
+  
+  class Restic::Backup < Restic::Task
+
+
+    def force_format? = @force_format
+
+
+    def create(*, force_format: false, **opts)
+      super(*, **opts)
+      @force_format = force_format
+    end
+
+
+    def show_operation = 'encrypt+backup'
+
+
+    def show_direction = '-->'
+
+
+    def externalize = super.merge(operation: :backup)
+
+
+    def process_arguments = ['backup', '.', '--tag', tag] + super
+
+
+    def process
+      super
+    end
+
+
+    def format
+      if Bitferry.simulate?
+        log.info('skipped repository initialization (simulation)')
+      else
+        log.info("initializing repository for task #{tag}")
+        # TODO is this enough or the entire directory must be wiped?
+        FileUtils.rm_rf(File.join(repository.root.to_s, 'config')) if force_format?
+        if execute(*common_options, 'init')
+          log.info("initialized repository for task #{tag} in #{repository.root}")
+        else
+          log.info("failed to initialize repository for task #{tag} in #{repository.root}")
+          raise
+        end
+      end
+      @state = :intact
+    end
+  
+  end
+
+
+  Task::ROUTE = {
+    'copy' => Rclone::Copy,
+    'update' => Rclone::Update,
+    'synchronize' => Rclone::Synchronize,
+    'equalize' => Rclone::Equalize,
+    'backup' => Restic::Backup
+  }
 
 
   class Endpoint

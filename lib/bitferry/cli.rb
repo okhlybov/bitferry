@@ -1,9 +1,9 @@
 #!/usr/bin/env ruby
 
 
-require 'io/console'
-require 'bitferry'
 require 'gli'
+require 'bitferry'
+require 'io/console'
 
 
 include GLI::App
@@ -91,7 +91,7 @@ command [:new, :create] do |c|
   c.arg 'root'
   c.desc 'Create new volume'
   c.command :volume do |e|
-    e.switch :force, { desc: 'Allow overwriting existing volume storage', negatable: false }
+    e.switch :force, { desc: 'Allow overwriting existing volume storage' }
     e.action do |gopts, opts, args|
       Volume.force_overwrite = true if opts[:force]
       Volume.new(args.first)
@@ -99,7 +99,7 @@ command [:new, :create] do |c|
   end
 
 
-  def create_rclone_task(task, *args, **opts)
+  def self.create_rclone_task(task, *args, **opts)
     begin
       task.new(decode_endpoint(args[0]), decode_endpoint(args[1]), encryption: decode_rclone_encryption(**opts), preserve_metadata: opts[:metadata])
     rescue => e
@@ -123,8 +123,7 @@ command [:new, :create] do |c|
     x.switch [:decrypt, :d], { desc: 'Decrypt files from source', negatable: false }
     x.switch [:metadata, :M], { desc: 'Preserve file metadata', default_value: true }
   end
-  
-  
+
 
   def self.selector(*args, **opts)
     x = nil
@@ -196,6 +195,33 @@ command [:new, :create] do |c|
   end
 
 
+  e.arg '[remote:]source1'
+  e.arg '[remote:]source2'
+  e.desc 'Create new bidirectional synchronization task'
+  e.command :equalize do |t|
+    new_task_opts t
+    t.action do |gopts, opts, args|
+      create_rclone_task(Rclone::Equalize, *args, **opts)
+    end
+  end
+
+
+  e.arg '[remote:]source'
+  e.arg '[remote:]repository'
+  e.desc 'Create new backup task'
+  e.command :backup do |t|
+    t.switch :force, { desc: 'Force overwriting existing repository upon initialization' }
+    t.action do |gopts, opts, args|
+      begin
+        Restic::Backup.new(decode_endpoint(args[0]), decode_endpoint(args[1]), obtain_password, force_format: opts[:force])
+      rescue => e
+        log.error(e.message)
+        raise
+      end
+    end
+  end
+
+
 end
 
 
@@ -214,7 +240,7 @@ command [:delete, :remove] do |c|
   delete_args(c)
   c.desc 'Delete volume'
   c.command :volume do |e|
-    e.switch :wipe, { desc: 'Wipe entire volume directory', negatable: false }
+    e.switch :wipe, { desc: 'Wipe entire volume directory' }
     e.action do |gopts, opts, args|
       Volume.force_wipe = true if opts[:wipe]
       args.each do |partial|
