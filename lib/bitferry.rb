@@ -493,6 +493,7 @@ module Bitferry
     end
 
 
+    # FIXME move to Endpoint#restore
     def restore_endpoint(x) = Endpoint::ROUTE.fetch(x.fetch(:endpoint)).restore(x)
 
 
@@ -638,9 +639,7 @@ module Bitferry
     end
 
 
-    def obtain_token(task)
-      Volume[decrypted(task).volume_tag].vault.fetch(task.tag)
-    end
+    def obtain_token(task) = Volume[decrypted(task).volume_tag].vault.fetch(task.tag)
 
 
     def self.new(*, **)
@@ -869,7 +868,25 @@ module Bitferry
   end
 
 
-  Task::ROUTE = { 'copy' => Rclone::Copy, 'update' => Rclone::Update, 'synchronize' => Rclone::Synchronize }
+  class Rclone::Equalize < Rclone::Task
+
+
+    def process_arguments = ['bisync'] + super
+
+
+    def externalize = super.merge(operation: :equalize)
+
+
+    def show_operation = super + 'equalize'
+
+
+    def show_direction = '<->'
+
+
+  end
+
+
+  Task::ROUTE = { 'copy' => Rclone::Copy, 'update' => Rclone::Update, 'synchronize' => Rclone::Synchronize, 'equalize' => Rclone::Equalize }
 
 
   class Endpoint
