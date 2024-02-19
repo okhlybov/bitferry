@@ -921,19 +921,15 @@ module Bitferry
     attr_reader :directory, :repository
 
 
-    attr_reader :options
-
-
-    def initialize(directory, repository, options: [], **opts)
+    def initialize(directory, repository, **opts)
       super(**opts)
-      @options = options
       @directory = directory
       @repository = repository
     end
 
 
-    def create(directory, repository, password, options: [], **opts)
-      super(directory, repository, options: options, **opts)
+    def create(directory, repository, password, **opts)
+      super(directory, repository, **opts)
       raise TypeError, 'unsupported unencrypted endpoint type' unless directory.is_a?(Endpoint::Bitferry)
       Volume[directory.volume_tag].vault[tag] = Rclone.obscure(@password = password) # Token is stored on the decrypted end only
     end
@@ -963,12 +959,9 @@ module Bitferry
           when :quiet then '--quiet'
           else nil
         end,
-        '--repo', repository.root.to_s
+        '-r', repository.root.to_s
       ].compact
     end
-
-
-    def process_arguments = ['--exclude', Volume::STORAGE, '--exclude', Volume::STORAGE_] + common_options + options
 
 
     def execute(*args, simulate: false, **opts)
@@ -995,7 +988,6 @@ module Bitferry
       super.merge(
         directory: directory.externalize,
         repository: repository.externalize,
-        restic: options.empty? ? nil : options
       ).compact
     end
 
@@ -1005,8 +997,7 @@ module Bitferry
         restore_endpoint(hash.fetch(:directory)),
         restore_endpoint(hash.fetch(:repository)),
         tag: hash.fetch(:tag),
-        modified: hash.fetch(:modified, DateTime.now),
-        options: hash.fetch(:restic, [])
+        modified: hash.fetch(:modified, DateTime.now)
       )
       super(hash)
     end
@@ -1018,12 +1009,26 @@ module Bitferry
   class Restic::Backup < Restic::Task
 
 
+    FORGET = ['--prune', '--keep-hourly', 60, '--keep-daily', 24, '--keep-weekly', 4, '--keep-monthly', 12, '--keep-yearly', 1]
+
+
+    CHECK = ['--read-data']
+
+
     def force_format? = @force_format
 
 
-    def create(*, force_format: false, **opts)
+    attr_reader :backup_options
+    attr_reader :forget_options
+    attr_reader :check_options
+
+
+    def create(*, force_format: false, backup: [], forget: FORGET, check: CHECK, **opts)
       super(*, **opts)
       @force_format = force_format
+      @backup_options = backup
+      @forget_options = forget
+      @check_options = check
     end
 
 
@@ -1036,21 +1041,37 @@ module Bitferry
     def show_direction = '-->'
 
 
-    def externalize = super.merge(operation: :backup)
-
-
     def process
       log.info("processing task #{tag}")
-      execute(*process_arguments, chdir: directory.root)
+      execute('backup', '.', '--tag', tag, '--exclude', Volume::STORAGE, '--exclude', Volume::STORAGE_, *backup_options, *common_options, chdir: directory.root)
     end
 
 
-    def process_arguments = ['backup', '.'] + super + ['--tag', tag]
-
-
     def common_options = super + [Bitferry.simulate? ? '--dry-run' : nil].compact
+
+      
+    def externalize
+      restic = {
+        backup: backup_options.empty? ? nil : backup_options,
+        forget: forget_options,
+        check: check_options
+      }.compact
+      super.merge({
+        operation: :backup,
+        restic: restic.empty? ? nil : restic
+      }.compact)
+    end
   
   
+    def restore(hash)
+      super
+      opts = hash.fetch(:restic, {})
+      @backup_options = opts.fetch(:backup, [])
+      @forget_options = opts.fetch(:forget, nil)
+      @check_options = opts.fetch(:check, nil)
+    end
+    
+
     def format
       if Bitferry.simulate?
         log.info('skipped repository initialization (simulation)')
@@ -1074,9 +1095,12 @@ module Bitferry
   class Restic::Restore < Restic::Task
 
 
-    def create(*, snapshot: nil, **opts)
+    attr_reader :restore_options
+
+
+    def create(*, restore: [], **opts)
       super(*, **opts)
-      @snapshot = snapshot
+      @restore_options = restore
     end
 
 
@@ -1089,18 +1113,31 @@ module Bitferry
     def show_direction = '-->'
 
 
-    def externalize = super.merge({ operation: :restore }.compact)
+    def externalize
+      
+      restic = {
+        restore: restore_options.empty? ? nil : restore_options
+      }.compact
+      super.merge({
+        operation: :restore,
+        restic: restic.empty? ? nil : restic
+      }.compact)
+    end
+
+
+    def restore(hash)
+      super
+      opts = hash.fetch(:rclone, {})
+      @restore_options = opts.fetch(:restore, [])
+    end
 
 
     def process
       log.info("processing task #{tag}")
-      execute(*process_arguments, simulate: Bitferry.simulate?, chdir: directory.root)
+      execute('restore', 'latest', '--target', '.', *restore_options, *common_options, simulate: Bitferry.simulate?, chdir: directory.root)
     end
 
 
-    def process_arguments = ['restore'] + super + ['--target', '.', 'latest']
-
-  
   end
 
 
