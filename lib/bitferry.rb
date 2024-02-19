@@ -942,9 +942,6 @@ module Bitferry
     def password = @password ||= Rclone.reveal(Volume[directory.volume_tag].vault.fetch(tag))
 
     
-    def show_status = "#{show_operation} #{directory.show_status} #{show_direction} #{repository.show_status}"
-
-
     def intact? = live? && directory.intact? && repository.intact?
 
 
@@ -966,7 +963,6 @@ module Bitferry
           when :quiet then '--quiet'
           else nil
         end,
-        Bitferry.simulate? ? '--dry-run' : nil,
         '--repo', repository.root.to_s
       ].compact
     end
@@ -975,24 +971,23 @@ module Bitferry
     def process_arguments = ['--exclude', Volume::STORAGE, '--exclude', Volume::STORAGE_] + common_options + options
 
 
-    def execute(*args, **)
+    def execute(*args, simulate: false, **opts)
       cmd = [Restic.executable] + args
       ENV['RESTIC_PASSWORD'] = password
       cms = cmd.collect(&:shellescape).join(' ')
       puts cms if Bitferry.verbosity == :verbose
       log.info(cms)
-      case system(*cmd, **) # using system() to prevent gobbling output channels
-        when nil then log.error("restic execution failure")
-        when false then log.error("restic exit code #{$?.to_i}")
-        else return true
+      if simulate
+        log.info('(simulated)')
+        true
+      else
+        case system(*cmd, **opts) # using system() to prevent gobbling output channels
+          when nil then log.error("restic execution failure")
+          when false then log.error("restic exit code #{$?.to_i}")
+          else return true
+        end
+        false
       end
-      false
-    end
-
-
-    def process
-      log.info("processing task #{tag}")
-      execute(*process_arguments, chdir: directory.root)
     end
 
 
@@ -1032,6 +1027,9 @@ module Bitferry
     end
 
 
+    def show_status = "#{show_operation} #{directory.show_status} #{show_direction} #{repository.show_status}"
+
+
     def show_operation = 'encrypt+backup'
 
 
@@ -1041,9 +1039,18 @@ module Bitferry
     def externalize = super.merge(operation: :backup)
 
 
-    def process_arguments = ['backup', '.', '--tag', tag] + super
+    def process
+      log.info("processing task #{tag}")
+      execute(*process_arguments, chdir: directory.root)
+    end
 
 
+    def process_arguments = ['backup', '.'] + super + ['--tag', tag]
+
+
+    def common_options = super + [Bitferry.simulate? ? '--dry-run' : nil].compact
+  
+  
     def format
       if Bitferry.simulate?
         log.info('skipped repository initialization (simulation)')
@@ -1067,31 +1074,31 @@ module Bitferry
   class Restic::Restore < Restic::Task
 
 
-    attr_reader :snapshot
-
-
     def create(*, snapshot: nil, **opts)
       super(*, **opts)
       @snapshot = snapshot
     end
 
 
+    def show_status = "#{show_operation} #{repository.show_status} #{show_direction} #{directory.show_status}"
+
+
     def show_operation = 'decrypt+restore'
 
 
-    def show_direction = '<--'
+    def show_direction = '-->'
 
 
-    def externalize = super.merge({ operation: :restore, snapshot: snapshot }.compact)
+    def externalize = super.merge({ operation: :restore }.compact)
 
 
-    def restore(hash)
-      super
-      @snapshot = hash[:snapshot]
+    def process
+      log.info("processing task #{tag}")
+      execute(*process_arguments, simulate: Bitferry.simulate?, chdir: directory.root)
     end
 
 
-    def process_arguments = ['restore', snapshot.nil? ? 'latest' : snapshot, '--target', '.', '--tag', tag] + super
+    def process_arguments = ['restore'] + super + ['--target', '.', 'latest']
 
   
   end
