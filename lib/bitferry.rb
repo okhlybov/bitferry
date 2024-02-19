@@ -975,8 +975,12 @@ module Bitferry
         true
       else
         case system(*cmd, **opts) # using system() to prevent gobbling output channels
-          when nil then log.error("restic execution failure")
-          when false then log.error("restic exit code #{$?.to_i}")
+          when nil
+            log.error("restic execution failure")
+            raise
+          when false
+            log.error("restic exit code #{$?.to_i}")
+            raise
           else return true
         end
         false
@@ -1015,17 +1019,14 @@ module Bitferry
     CHECK = ['--read-data']
 
 
-    def force_format? = @force_format
-
-
     attr_reader :backup_options
     attr_reader :forget_options
     attr_reader :check_options
 
 
-    def create(*, force_format: false, backup: [], forget: FORGET, check: CHECK, **opts)
+    def create(*, format: nil, backup: [], forget: FORGET, check: CHECK, **opts)
       super(*, **opts)
-      @force_format = force_format
+      @format = format
       @backup_options = backup
       @forget_options = forget
       @check_options = check
@@ -1042,8 +1043,21 @@ module Bitferry
 
 
     def process
-      log.info("processing task #{tag}")
-      execute('backup', '.', '--tag', tag, '--exclude', Volume::STORAGE, '--exclude', Volume::STORAGE_, *backup_options, *common_options, chdir: directory.root)
+      begin
+        log.info("processing task #{tag}")
+        execute('backup', '.', '--tag', tag, '--exclude', Volume::STORAGE, '--exclude', Volume::STORAGE_, *backup_options, *common_options, chdir: directory.root)
+        unless check_options.nil?
+          log.info("checking repository in #{repository.root}")
+          execute('check', *check_options, *common_options)
+        end
+        unless forget_options.nil?
+          log.info("performing repository maintenance tasks in #{repository.root}")
+          execute('forget', *forget_options.collect(&:to_s), *common_options)
+        end
+        true
+      rescue
+        false
+      end
     end
 
 
@@ -1077,13 +1091,21 @@ module Bitferry
         log.info('skipped repository initialization (simulation)')
       else
         log.info("initializing repository for task #{tag}")
-        # TODO is this enough or the entire directory must be wiped?
-        FileUtils.rm_rf(File.join(repository.root.to_s, 'config')) if force_format?
-        if execute(*common_options, 'init')
-          log.info("initialized repository for task #{tag} in #{repository.root}")
+        if @format == true
+          log.debug("wiping repository in #{repository.root}")
+          ['config', 'data', 'index', 'keys', 'locks', 'snapshots'].each { |x| FileUtils.rm_rf(File.join(repository.root.to_s, x)) }
+        end
+        if @format == false
+          # TODO validate existing repo
+          log.info("attached to existing repository for task #{tag} in #{repository.root}")
         else
-          log.info("failed to initialize repository for task #{tag} in #{repository.root}")
-          raise
+          begin
+            execute(*common_options, 'init')
+            log.info("initialized repository for task #{tag} in #{repository.root}")
+          rescue
+            log.fatal("failed to initialize repository for task #{tag} in #{repository.root}")
+            raise
+          end
         end
       end
       @state = :intact
@@ -1134,7 +1156,12 @@ module Bitferry
 
     def process
       log.info("processing task #{tag}")
-      execute('restore', 'latest', '--target', '.', *restore_options, *common_options, simulate: Bitferry.simulate?, chdir: directory.root)
+      begin
+        execute('restore', 'latest', '--target', '.', *restore_options, *common_options, simulate: Bitferry.simulate?, chdir: directory.root)
+        true
+      rescue
+        false
+      end
     end
 
 

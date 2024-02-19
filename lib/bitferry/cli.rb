@@ -210,27 +210,32 @@ command [:new, :create] do |c|
   e.arg '[remote:]repository'
   e.desc 'Create new backup task'
   e.command :backup do |t|
-    t.switch :force, { desc: 'Force overwriting existing repository upon initialization' }
+    t.switch :force, { desc: 'Force overwriting existing repository', negatable: false }
+    t.switch [:attach, :a], { desc: 'Attach to existing repository', negatable: false }
     t.action do |gopts, opts, args|
       begin
-        Restic::Backup.new(decode_endpoint(args[0]), decode_endpoint(args[1]), obtain_password, force_format: opts[:force])
+        format = if opts[:attach] then false
+          elsif opts[:force] then true
+          else nil
+        end
+        Restic::Backup.new(decode_endpoint(args[0]), decode_endpoint(args[1]), obtain_password, format: format)
       rescue => e
-        log.error(e.message)
+        log.fatal(e.message)
         raise
       end
     end
   end
 
 
-  e.arg '[remote:]source'
   e.arg '[remote:]repository'
+  e.arg '[remote:]destination'
   e.desc 'Create new restore task'
   e.command :restore do |t|
     t.action do |gopts, opts, args|
       begin
-        Restic::Restore.new(decode_endpoint(args[0]), decode_endpoint(args[1]), obtain_password)
+        Restic::Restore.new(decode_endpoint(args[1]), decode_endpoint(args[0]), obtain_password)
       rescue => e
-        log.error(e.message)
+        log.fatal(e.message)
         raise
       end
     end
