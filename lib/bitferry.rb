@@ -173,7 +173,7 @@ module Bitferry
       dlload('kernel32')
       include Fiddle::Win32Types
       extern 'DWORD WINAPI GetLogicalDrives()'
-    end  
+    end
       def self.system_mounts
         mounts = []
         mask = Kernel32.GetLogicalDrives
@@ -321,10 +321,14 @@ module Bitferry
     def self.endpoint(root)
       path = Pathname.new(root).realdirpath
       intact.sort { |v1, v2| v2.root.size <=> v1.root.size }.each do |volume|
-        stem = path.relative_path_from(volume.root)
-        case stem.to_s
-        when '.' then return volume.endpoint
-        when /^[^\.].*/ then return volume.endpoint(stem)
+        begin
+          stem = path.relative_path_from(volume.root)
+          case stem.to_s
+          when '.' then return volume.endpoint
+          when /^[^\.].*/ then return volume.endpoint(stem)
+          end
+        rescue ArgumentError
+          # Catch different prefix error on Windows
         end
       end
       nil
@@ -384,7 +388,7 @@ module Bitferry
       if Bitferry.simulate?
         log.info("skipped storage formatting (simulation)")
       else
-        FileUtils.mkdir_p(root) 
+        FileUtils.mkdir_p(root)
         FileUtils.rm_f [storage, storage_]
         log.info("formatted volume #{tag} in #{root}")
       end
@@ -567,7 +571,7 @@ module Bitferry
 
     def self.executable = @executable ||= (rclone = ENV['RCLONE']).nil? ? 'rclone' : rclone
 
-    
+
     def self.exec(*args)
       cmd = [executable] + args
       log.debug(cmd.collect(&:shellescape).join(' '))
@@ -608,7 +612,7 @@ module Bitferry
 
 
     def initialize(token, name_encoder: :base32, name_transformer: :encrypter)
-      raise("bad file/directory name encoder #{name_encoder}") unless NAME_ENCODER.keys.include?(@name_encoder = name_encoder) 
+      raise("bad file/directory name encoder #{name_encoder}") unless NAME_ENCODER.keys.include?(@name_encoder = name_encoder)
       raise("bad file/directory name transformer #{name_transformer}") unless NAME_TRANSFORMER.keys.include?(@name_transformer = name_transformer)
       @token = token
     end
@@ -682,7 +686,7 @@ module Bitferry
 
   class Rclone::Decrypt < Rclone::Encryption
 
-    
+
     def encrypted(task) = task.source
 
 
@@ -754,7 +758,7 @@ module Bitferry
       super
     end
 
-    
+
     def format = nil
 
 
@@ -898,7 +902,7 @@ module Bitferry
 
     def self.executable = @executable ||= (restic = ENV['RESTIC']).nil? ? 'restic' : restic
 
-    
+
     def self.exec(*args)
       cmd = [executable] + args
       log.debug(cmd.collect(&:shellescape).join(' '))
@@ -937,7 +941,7 @@ module Bitferry
 
     def password = @password ||= Rclone.reveal(Volume[directory.volume_tag].vault.fetch(tag))
 
-    
+
     def intact? = live? && directory.intact? && repository.intact?
 
 
@@ -1009,7 +1013,7 @@ module Bitferry
 
   end
 
-  
+
   class Restic::Backup < Restic::Task
 
 
@@ -1045,14 +1049,14 @@ module Bitferry
     def process
       begin
         log.info("processing task #{tag}")
-        execute('backup', '.', '--tag', tag, '--exclude', Volume::STORAGE, '--exclude', Volume::STORAGE_, *backup_options, *common_options, chdir: directory.root)
+        execute('backup', '.', '--tag', tag, '--exclude', Volume::STORAGE, '--exclude', Volume::STORAGE_, *backup_options, *common_options_simulate, chdir: directory.root)
         unless check_options.nil?
           log.info("checking repository in #{repository.root}")
           execute('check', *check_options, *common_options)
         end
         unless forget_options.nil?
           log.info("performing repository maintenance tasks in #{repository.root}")
-          execute('forget', *forget_options.collect(&:to_s), *common_options)
+          execute('forget', *forget_options.collect(&:to_s), *common_options_simulate)
         end
         true
       rescue
@@ -1061,9 +1065,9 @@ module Bitferry
     end
 
 
-    def common_options = super + [Bitferry.simulate? ? '--dry-run' : nil].compact
+    def common_options_simulate = common_options + [Bitferry.simulate? ? '--dry-run' : nil].compact
 
-      
+
     def externalize
       restic = {
         backup: backup_options.empty? ? nil : backup_options,
@@ -1075,8 +1079,8 @@ module Bitferry
         restic: restic.empty? ? nil : restic
       }.compact)
     end
-  
-  
+
+
     def restore(hash)
       super
       opts = hash.fetch(:restic, {})
@@ -1084,7 +1088,7 @@ module Bitferry
       @forget_options = opts.fetch(:forget, nil)
       @check_options = opts.fetch(:check, nil)
     end
-    
+
 
     def format
       if Bitferry.simulate?
@@ -1110,7 +1114,7 @@ module Bitferry
       end
       @state = :intact
     end
-  
+
   end
 
 
@@ -1136,7 +1140,7 @@ module Bitferry
 
 
     def externalize
-      
+
       restic = {
         restore: restore_options.empty? ? nil : restore_options
       }.compact
@@ -1218,7 +1222,7 @@ module Bitferry
 
 
     def refers?(volume) = false
-      
+
 
     def generation = 0
 
