@@ -107,8 +107,8 @@ command [:new, :create] do |c|
       raise
     end
   end
-  
-  
+
+
   def self.new_task_args(x)
     x.arg '[remote:]source'
     x.arg '[remote:]destination'
@@ -212,13 +212,15 @@ command [:new, :create] do |c|
   e.command :backup do |t|
     t.switch :force, { desc: 'Force overwriting existing repository', negatable: false }
     t.switch [:attach, :a], { desc: 'Attach to existing repository', negatable: false }
+    t.switch [:check, :c], { desc: 'Perform integrity checks', negatable: false }
     t.action do |gopts, opts, args|
+      format = if opts[:attach] then false
+        elsif opts[:force] then true
+        else nil
+      end
+      check = opts[:check] ? CHECK : nil
       begin
-        format = if opts[:attach] then false
-          elsif opts[:force] then true
-          else nil
-        end
-        Restic::Backup.new(decode_endpoint(args[0]), decode_endpoint(args[1]), obtain_password, format: format)
+        Restic::Backup.new(decode_endpoint(args[0]), decode_endpoint(args[1]), obtain_password, format: format, check: check)
       rescue => e
         log.fatal(e.message)
         raise
