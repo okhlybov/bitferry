@@ -1,2 +1,3 @@
 #!/usr/bin/env ruby
-require 'bitferry/cli'
+require 'bitferry/clamp'
+#require 'bitferry/cli'

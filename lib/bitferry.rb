@@ -27,8 +27,8 @@ module Bitferry
   end
 
 
-  extend  Logging
   include Logging
+  extend  Logging
 
 
   def self.tag = format('%08x', 2**32*rand)
@@ -96,22 +96,21 @@ module Bitferry
   end
 
 
-  # Decode endpoint definition
   def self.endpoint(root)
     case root
-    when /^:(\w+):(.*)/
-      volumes = Volume.lookup($1)
-      volume = case volumes.size
-      when 0 then raise("no intact volumes matching (partial) tag #{$1}")
-      when 1 then volumes.first
-      else
-        tags = volumes.collect { |v| v.tag }.join(', ')
-        raise("multiple intact volumes matching (partial) tag #{$1}: #{tags}")
-      end
-      Endpoint::Bitferry.new(volume, $2)
-    when /^(?:local)?:(.*)/ then Endpoint::Local.new($1)
-    when /^(\w{2,}):(.*)/ then Endpoint::Rclone.new($1, $2)
-    else Volume.endpoint(root)
+      when /^:(\w+):(.*)/
+        volumes = Volume.lookup($1)
+        volume = case volumes.size
+          when 0 then raise ArgumentError, "no intact volume matching (partial) tag #{$1}"
+          when 1 then volumes.first
+          else
+            tags = volumes.collect { |v| v.tag }.join(', ')
+            raise ArgumentError, "multiple intact volumes matching (partial) tag #{$1}: #{tags}"
+        end
+        Endpoint::Bitferry.new(volume, $2)
+      when /^(?:local)?:(.*)/ then Endpoint::Local.new($1)
+      when /^(\w{2,}):(.*)/ then Endpoint::Rclone.new($1, $2)
+      else Volume.endpoint(root)
     end
   end
 
@@ -200,6 +199,7 @@ module Bitferry
 
 
     include Logging
+    extend Logging
 
 
     STORAGE      = '.bitferry'
@@ -219,16 +219,6 @@ module Bitferry
     attr_reader :vault
 
 
-    @force_overwrite = false
-    def self.force_overwrite? = @force_overwrite
-    def self.force_overwrite=(mode) @force_overwrite = mode end
-
-
-    @force_wipe = false
-    def self.force_wipe? = @force_wipe
-    def self.force_wipe=(mode) @force_wipe = mode end
-
-
     def self.[](tag)
       @@registry.each_value { |volume| return volume if volume.tag == tag }
       nil
@@ -244,9 +234,9 @@ module Bitferry
     end
 
 
-    def self.new(root)
+    def self.new(root, **)
       volume = allocate
-      volume.send(:create, root)
+      volume.send(:create, root, **)
       register(volume)
     end
 
@@ -266,11 +256,27 @@ module Bitferry
     end
 
 
-    def initialize(root, tag: Bitferry.tag, modified: DateTime.now)
+    def self.delete(*tags, wipe: false)
+      process = []
+      tags.each do |tag|
+        case (volumes = Volume.lookup(tag)).size
+          when 0 then log.warn("no volumes matching (partial) tag #{tag}")
+          when 1 then process += volumes
+          else
+            tags = volumes.collect { |v| v.tag }.join(', ')
+            raise ArgumentError, "multiple volumes matching (partial) tag #{tag}: #{tags}"
+        end
+      end
+      process.each { |volume| volume.delete(wipe: wipe) }
+    end
+
+
+    def initialize(root, tag: Bitferry.tag, modified: DateTime.now, overwrite: false)
       @tag = tag
       @generation = 0
       @vault = {}
       @modified = modified
+      @overwrite = overwrite
       @root = Pathname.new(root).realdirpath
     end
 
@@ -320,22 +326,24 @@ module Bitferry
 
     def self.endpoint(root)
       path = Pathname.new(root).realdirpath
+      # FIXME select innermost or outermost volume in case of nested volumes?
       intact.sort { |v1, v2| v2.root.size <=> v1.root.size }.each do |volume|
         begin
+          # FIXME chop trailing slashes
           stem = path.relative_path_from(volume.root)
           case stem.to_s
-          when '.' then return volume.endpoint
-          when /^[^\.].*/ then return volume.endpoint(stem)
+            when '.' then return volume.endpoint
+            when /^[^\.].*/ then return volume.endpoint(stem)
           end
         rescue ArgumentError
           # Catch different prefix error on Windows
         end
       end
-      nil
+      raise ArgumentError, "no intact volume encompasses path #{root}"
     end
 
 
-    def endpoint(path = '') = Endpoint::Bitferry.new(self, path)
+    def endpoint(path = String.new) = Endpoint::Bitferry.new(self, path)
 
 
     def modified? = @modified || tasks.any? { |t| t.generation > generation }
@@ -351,10 +359,11 @@ module Bitferry
     end
 
 
-    def delete
+    def delete(wipe: false)
       touch
+      @wipe = wipe
       @state = :removing
-      log.info("marked volume #{tag} for removal")
+      log.info("marked volume #{tag} for deletion")
     end
 
 
@@ -384,7 +393,7 @@ module Bitferry
 
 
     def format
-      raise IOError.new("refuse to overwrite existing volume storage #{storage}") if !Volume.force_overwrite? && File.exist?(storage)
+      raise IOError.new("refuse to overwrite existing volume storage #{storage}") if !@overwrite && File.exist?(storage)
       if Bitferry.simulate?
         log.info("skipped storage formatting (simulation)")
       else
@@ -397,17 +406,17 @@ module Bitferry
 
 
     def remove
-      @state = nil
-      @@registry.delete(root)
       unless Bitferry.simulate?
-        if Volume.force_wipe?
+        if @wipe
           FileUtils.rm_rf(Dir[File.join(root, '*'), File.join(root, '.*')])
           log.info("wiped entire volume directory #{root}")
         else
           FileUtils.rm_f [storage, storage_]
-          log.info("removed volume #{tag} storage files #{File.join(root, STORAGE_MASK)}")
+          log.info("deleted volume #{tag} storage files #{File.join(root, STORAGE_MASK)}")
         end
       end
+      @@registry.delete(root)
+      @state = nil
     end
 
 
@@ -452,7 +461,8 @@ module Bitferry
 
 
     include Logging
-
+    extend  Logging
+  
 
     attr_reader :tag
 
@@ -474,6 +484,21 @@ module Bitferry
       task = allocate
       task.send(:restore, hash)
       register(task)
+    end
+
+
+    def self.delete(*tags)
+      process = []
+      tags.each do |tag|
+        case (tasks = Task.lookup(tag)).size
+          when 0 then log.warn("no tasks matching (partial) tag #{tag}")
+          when 1 then process += tasks
+          else
+            tags = tasks.collect { |v| v.tag }.join(', ')
+            raise ArgumentError, "multiple tasks matching (partial) tag #{tag}: #{tags}"
+        end
+      end
+      process.each { |task| task.delete }
     end
 
 
@@ -565,9 +590,9 @@ module Bitferry
   module Rclone
 
 
-    extend  Logging
     include Logging
-
+    extend  Logging
+  
 
     def self.executable = @executable ||= (rclone = ENV['RCLONE']).nil? ? 'rclone' : rclone
 
@@ -724,9 +749,9 @@ module Bitferry
 
     def initialize(source, destination, encryption: nil, options: [], **opts)
       super(**opts)
-      @source = source
       @options = options
-      @destination = destination
+      @source = source.is_a?(Endpoint) ? source : Bitferry.endpoint(source)
+      @destination = destination.is_a?(Endpoint) ? destination : Bitferry.endpoint(destination)
       @encryption = encryption
     end
 
@@ -896,9 +921,9 @@ module Bitferry
   module Restic
 
 
-    extend  Logging
     include Logging
-
+    extend  Logging
+  
 
     def self.executable = @executable ||= (restic = ENV['RESTIC']).nil? ? 'restic' : restic
 
@@ -927,8 +952,8 @@ module Bitferry
 
     def initialize(directory, repository, **opts)
       super(**opts)
-      @directory = directory
-      @repository = repository
+      @directory = directory.is_a?(Endpoint) ? directory : Bitferry.endpoint(directory)
+      @repository = repository.is_a?(Endpoint) ? repository : Bitferry.endpoint(repository)
     end
 
 
