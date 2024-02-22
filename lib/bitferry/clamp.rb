@@ -25,13 +25,14 @@ Encryption = %{
 def setup_rclone_task(x)
   x.parameter 'SOURCE', 'Source endpoint specifier'
   x.parameter 'DESTINATION', 'Destination endpoint specifier'
+  x.option ['--process'], 'OPTIONS', 'Extra processing options' do |opts| $process = opts end
   x.option ['--encrypt', '-e'], :flag, 'Encrypt files in destination'
   x.option ['--decrypt', '-d'], :flag, 'Decrypt source files'
 end
 
 
 def create_rclone_task(type, *args, **opts)
-  type.new(*args, **opts)
+  type.new(*args, process: decode_options($process, Bitferry::Rclone::Task::PROCESS), **opts)
 end
 
 
@@ -56,6 +57,14 @@ def obtain_password
   else
     $stdin.readline.strip!
   end
+end
+
+
+def decode_options(opts, hash)
+  # * nil -> nil
+  # * default -> hash[default]
+  # * --foo,bar -> [--foo, bar]
+  opts.nil? ? nil : (opts.start_with?('-') ? opts.split(',') : hash.fetch(opts))
 end
 
 
@@ -198,10 +207,23 @@ Clamp do
           Create source --> repository incremental backup task.
           This task employs the Restic worker.
         }
+        option ['--process'], 'OPTIONS', 'Extra processing options' do |opts| $process = opts end
+        option ['--forget'], 'OPTIONS', 'Repository forgetting (snapshot retention policy) options' do |opts| $forget = opts end
+        option ['--check'], 'OPTIONS', 'Repository checking options' do |opts| $check = opts end
+        option '--force', :flag, 'Force overwriting existing repository' do $format = true end
+        option ['--attach', '-a'], :flag, 'Attach to existing repository' do $format = false end
         parameter 'SOURCE', 'Source endpoint specifier'
         parameter 'REPOSITORY', 'Destination repository endpoint specifier'
         def execute
-          bitferry { Bitferry::Restic::Backup.new(source, repository, obtain_password) }
+          bitferry {
+            Bitferry::Restic::Backup.new(
+              source, repository, obtain_password,
+              format: $format,
+              process: decode_options($process, Bitferry::Restic::Backup::PROCESS),
+              check: decode_options($check, Bitferry::Restic::Backup::CHECK),
+              forget: decode_options($forget, Bitferry::Restic::Backup::FORGET)
+            )
+          }
         end
       end
 

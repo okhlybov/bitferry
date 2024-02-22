@@ -744,21 +744,25 @@ module Bitferry
     attr_reader :token
 
 
-    attr_reader :options
+    attr_reader :process_options
 
 
-    def initialize(source, destination, encryption: nil, options: [], **opts)
+    PROCESS = {
+      'default' => ['--preserve-metadata']
+    }
+
+
+    def initialize(source, destination, encryption: nil, process: nil, **opts)
       super(**opts)
-      @options = options
+      @process_options = process.nil? ? [] : process
       @source = source.is_a?(Endpoint) ? source : Bitferry.endpoint(source)
       @destination = destination.is_a?(Endpoint) ? destination : Bitferry.endpoint(destination)
       @encryption = encryption
     end
 
 
-    def create(*, preserve_metadata: true, options: [], **opts)
-      options << '--metadata' if preserve_metadata
-      super(*, options: options, **opts)
+    def create(*, process: nil, **opts)
+      super(*, process: process, **opts)
       encryption.configure(self) unless encryption.nil?
     end
 
@@ -802,7 +806,7 @@ module Bitferry
 
 
     def process_arguments
-      ['--filter', "- #{Volume::STORAGE}", '--filter', "- #{Volume::STORAGE_}"] + common_options + options + (
+      ['--filter', "- #{Volume::STORAGE}", '--filter', "- #{Volume::STORAGE_}"] + common_options + process_options + (
         encryption.nil? ? [source.root.to_s, destination.root.to_s] : encryption.arguments(self)
       )
     end
@@ -830,7 +834,7 @@ module Bitferry
         source: source.externalize,
         destination: destination.externalize,
         encryption: encryption.nil? ? nil : encryption.externalize,
-        rclone: options.empty? ? nil : options
+        rclone: process_options.empty? ? nil : process_options
       ).compact
     end
 
@@ -841,7 +845,7 @@ module Bitferry
         restore_endpoint(hash.fetch(:destination)),
         tag: hash.fetch(:tag),
         modified: hash.fetch(:modified, DateTime.now),
-        options: hash.fetch(:rclone, []),
+        process: hash.fetch(:rclone, []),
         encryption: hash[:encryption].nil? ? nil : Rclone::Encryption.restore(hash[:encryption])
       )
       super(hash)
@@ -1036,21 +1040,32 @@ module Bitferry
   class Restic::Backup < Restic::Task
 
 
-    FORGET = ['--prune', '--keep-hourly', 60, '--keep-daily', 24, '--keep-weekly', 4, '--keep-monthly', 12, '--keep-yearly', 1]
+    PROCESS = {
+      'default' => []
+    }
 
 
-    CHECK = ['--read-data']
+    FORGET = {
+      'default' => ['--prune', '--keep-within-hourly', '24h', '--keep-within-daily', '7d', '--keep-within-weekly', '30d', '--keep-within-monthly', '1y', '--keep-within-yearly', '100y']
+    }
 
 
-    attr_reader :backup_options
+    CHECK = {
+      'fast' => [],
+      'default' => [],
+      'full' => ['--read-data']
+    }
+
+
+    attr_reader :process_options
     attr_reader :forget_options
     attr_reader :check_options
 
 
-    def create(*, format: nil, backup: [], forget: FORGET, check: CHECK, **opts)
+    def create(*, format: nil, process: nil, forget: nil, check: nil, **opts)
       super(*, **opts)
       @format = format
-      @backup_options = backup
+      @process_options = process.nil? ? [] : process
       @forget_options = forget
       @check_options = check
     end
@@ -1068,7 +1083,7 @@ module Bitferry
     def process
       begin
         log.info("processing task #{tag}")
-        execute('backup', '.', '--tag', tag, '--exclude', Volume::STORAGE, '--exclude', Volume::STORAGE_, *backup_options, *common_options_simulate, chdir: directory.root)
+        execute('backup', '.', '--tag', tag, '--exclude', Volume::STORAGE, '--exclude', Volume::STORAGE_, *process_options, *common_options_simulate, chdir: directory.root)
         unless check_options.nil?
           log.info("checking repository in #{repository.root}")
           execute('check', *check_options, *common_options)
@@ -1089,7 +1104,7 @@ module Bitferry
 
     def externalize
       restic = {
-        backup: backup_options.empty? ? nil : backup_options,
+        process: process_options.empty? ? nil : process_options,
         forget: forget_options,
         check: check_options
       }.compact
@@ -1103,7 +1118,7 @@ module Bitferry
     def restore(hash)
       super
       opts = hash.fetch(:restic, {})
-      @backup_options = opts.fetch(:backup, [])
+      @process_options = opts.fetch(:process, [])
       @forget_options = opts.fetch(:forget, nil)
       @check_options = opts.fetch(:check, nil)
     end
