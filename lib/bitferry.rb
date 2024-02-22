@@ -84,9 +84,24 @@ module Bitferry
   end
 
 
-  def self.process
+  def self.process(*tags)
     log.info('processing tasks')
-    result = Volume.intact.collect { |volume| volume.intact_tasks }.flatten.uniq.all? { |task| task.process }
+    tasks = Volume.intact.collect { |volume| volume.intact_tasks }.flatten.uniq
+    if tags.empty?
+      process = tasks
+    else
+      process = []
+      tags.each do |tag|
+        case (tasks = Task.match([tag], tasks)).size
+          when 0 then log.warn("no tasks matching (partial) tag #{tag}")
+          when 1 then process += tasks
+          else
+            tags = tasks.collect { |v| v.tag }.join(', ')
+            raise ArgumentError, "multiple tasks matching (partial) tag #{tag}: #{tags}"
+        end
+      end
+    end
+    result = process.uniq.all? { |task| task.process }
     result ? log.info('tasks processed') : log.warn('task process failure(s) reported')
     result
   end
@@ -222,9 +237,12 @@ module Bitferry
 
 
     # Return list of registered volumes whose tags match at least one specified partial
-    def self.lookup(*parts)
-      rxs = parts.collect { |x| Regexp.new(x) }
-      registered.filter do |volume|
+    def self.lookup(*tags) = match(tags, registered)
+
+
+    def self.match(tags, volumes)
+      rxs = tags.collect { |x| Regexp.new(x) }
+      volumes.filter do |volume|
         rxs.any? { |rx| !(rx =~ volume.tag).nil? }
       end
     end
@@ -555,12 +573,17 @@ module Bitferry
 
 
     # Return list of registered tasks whose tags match at least one of specified partial tags
-    def self.lookup(*tags)
+    def self.lookup(*tags) = match(tags, registered)
+
+
+    # Return list of specified tasks whose tags match at least one of specified partial tags
+    def self.match(tags, tasks)
       rxs = tags.collect { |x| Regexp.new(x) }
-      registered.filter do |task|
+      tasks.filter do |task|
         rxs.any? { |rx| !(rx =~ task.tag).nil? }
       end
     end
+
 
     def self.registered = @@registry.values
 

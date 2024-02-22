@@ -273,7 +273,7 @@ Clamp do
     }
     parameter '[TAG] ...', 'Task tags', attribute_name: :tags
     def execute
-      bitferry { Bitferry.process } # TODO
+      bitferry { Bitferry.process(*tags) }
     end
   end
 
