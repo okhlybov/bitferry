@@ -641,23 +641,16 @@ module Bitferry
   class Rclone::Encryption
 
 
-    NAME_ENCODER = { nil => nil, false => nil, base32: :base32, base64: :base64, base32768: :base32768 }
+    PROCESS = {
+      'default' => ['--crypt-filename-encoding', 'base32', '--crypt-filename-encryption', 'standard']
+    }
 
 
-    NAME_TRANSFORMER = { nil => nil, false => :off, encrypter: :standard, obfuscator: :obfuscate }
+    attr_reader :process_options
 
 
-    def options
-      @options ||= [
-        NAME_ENCODER.fetch(@name_encoder).nil? ? nil : ['--crypt-filename-encoding', NAME_ENCODER[@name_encoder]],
-        NAME_TRANSFORMER.fetch(@name_transformer).nil? ? nil : ['--crypt-filename-encryption', NAME_TRANSFORMER[@name_transformer]]
-      ].compact.flatten
-    end
-
-
-    def initialize(token, name_encoder: :base32, name_transformer: :encrypter)
-      raise("bad file/directory name encoder #{name_encoder}") unless NAME_ENCODER.keys.include?(@name_encoder = name_encoder)
-      raise("bad file/directory name transformer #{name_transformer}") unless NAME_TRANSFORMER.keys.include?(@name_transformer = name_transformer)
+    def initialize(token, process: nil)
+      @process_options = process.nil? ? [] : process
       @token = token
     end
 
@@ -665,10 +658,10 @@ module Bitferry
     def create(password, **) = initialize(Rclone.obscure(password), **)
 
 
-    def restore(hash) = @options = hash.fetch(:rclone, [])
+    def restore(hash) = @process_options = hash.fetch(:rclone, [])
 
 
-    def externalize = options.empty? ? {} : { rclone: options }
+    def externalize = process_options.empty? ? {} : { rclone: process_options }
 
 
     def configure(task) = install_token(task)
@@ -677,7 +670,7 @@ module Bitferry
     def process(task) = ENV['RCLONE_CRYPT_PASSWORD'] = obtain_token(task)
 
 
-    def arguments(task) = options + ['--crypt-remote', encrypted(task).root.to_s]
+    def arguments(task) = process_options + ['--crypt-remote', encrypted(task).root.to_s]
 
 
     def install_token(task)

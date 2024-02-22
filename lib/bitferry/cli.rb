@@ -26,13 +26,17 @@ def setup_rclone_task(x)
   x.parameter 'SOURCE', 'Source endpoint specifier'
   x.parameter 'DESTINATION', 'Destination endpoint specifier'
   x.option ['--process'], 'OPTIONS', 'Extra processing options' do |opts| $process = opts end
-  x.option ['--encrypt', '-e'], :flag, 'Encrypt files in destination'
-  x.option ['--decrypt', '-d'], :flag, 'Decrypt source files'
+  x.option ['--encrypt', '-e'], 'OPTIONS', 'Encrypt files in destination' do |opts|
+    $encryption = Bitferry::Rclone::Encrypt.new(obtain_password, process: decode_options(opts, Bitferry::Rclone::Encryption::PROCESS))
+  end
+  x.option ['--decrypt', '-d'], 'OPTIONS', 'Decrypt source files' do |opts|
+    $encryption = Bitferry::Rclone::Decrypt.new(obtain_password, process: decode_options(opts, Bitferry::Rclone::Encryption::PROCESS))
+  end
 end
 
 
 def create_rclone_task(type, *args, **opts)
-  type.new(*args, process: decode_options($process, Bitferry::Rclone::Task::PROCESS), **opts)
+  type.new(*args, process: decode_options($process, Bitferry::Rclone::Task::PROCESS), encryption: $encryption, **opts)
 end
 
 
@@ -181,6 +185,9 @@ Clamp do
           This task employs the Rclone worker.
         }
         setup_rclone_task(self)
+        def execute
+          bitferry { create_rclone_task(Bitferry::Rclone::Update, source, destination) }
+        end
       end
 
 
@@ -199,6 +206,9 @@ Clamp do
           This task employs the Rclone worker.
         }
         setup_rclone_task(self)
+        def execute
+          bitferry { create_rclone_task(Bitferry::Rclone::Synchronize, source, destination) }
+        end
       end
 
 
