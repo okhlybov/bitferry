@@ -87,11 +87,7 @@ module Bitferry
   def self.process
     log.info('processing tasks')
     result = Volume.intact.collect { |volume| volume.intact_tasks }.flatten.uniq.all? { |task| task.process }
-    if result
-      log.info('tasks processed')
-    else
-      log.warn('task process failure(s) reported')
-    end
+    result ? log.info('tasks processed') : log.warn('task process failure(s) reported')
     result
   end
 
@@ -558,9 +554,9 @@ module Bitferry
     def self.[](tag) = @@registry[tag]
 
 
-    # Return list of registered tasks whose tags match at least one specified partial
-    def self.lookup(*parts)
-      rxs = parts.collect { |x| Regexp.new(x) }
+    # Return list of registered tasks whose tags match at least one of specified partial tags
+    def self.lookup(*tags)
+      rxs = tags.collect { |x| Regexp.new(x) }
       registered.filter do |task|
         rxs.any? { |rx| !(rx =~ task.tag).nil? }
       end

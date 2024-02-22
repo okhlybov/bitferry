@@ -272,6 +272,9 @@ Clamp do
       If no tags are given, process all intact tasks.
     }
     parameter '[TAG] ...', 'Task tags', attribute_name: :tags
+    def execute
+      bitferry { Bitferry.process } # TODO
+    end
   end
 
 
