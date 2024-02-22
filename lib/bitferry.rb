@@ -1102,7 +1102,7 @@ module Bitferry
     def process
       begin
         log.info("processing task #{tag}")
-        execute('backup', '.', '--tag', tag, '--exclude', Volume::STORAGE, '--exclude', Volume::STORAGE_, *process_options, *common_options_simulate, chdir: directory.root)
+        execute('backup', '.', '--tag', "bitferry,#{tag}", '--exclude', Volume::STORAGE, '--exclude', Volume::STORAGE_, *process_options, *common_options_simulate, chdir: directory.root)
         unless check_options.nil?
           log.info("checking repository in #{repository.root}")
           execute('check', *check_options, *common_options)
