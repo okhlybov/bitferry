@@ -393,7 +393,7 @@ module Bitferry
 
 
     def format
-      raise IOError.new("refuse to overwrite existing volume storage #{storage}") if !@overwrite && File.exist?(storage)
+      raise IOError, "refuse to overwrite existing volume storage #{storage}" if !@overwrite && File.exist?(storage)
       if Bitferry.simulate?
         log.info("skipped storage formatting (simulation)")
       else
@@ -813,12 +813,8 @@ module Bitferry
       cms = cmd.collect(&:shellescape).join(' ')
       puts cms if Bitferry.verbosity == :verbose
       log.info(cms)
-      case system(*cmd) # using system() to prevent gobbling output channels
-        when nil then log.error("rclone execution failure")
-        when false then log.error("rclone exit code #{$?.to_i}")
-        else return true
-      end
-      false
+      status = Open3.pipeline(cmd).first
+      raise "rclone exit code #{status.exitstatus}" unless status.success?
     end
 
 
@@ -959,8 +955,8 @@ module Bitferry
 
     def create(directory, repository, password, **opts)
       super(directory, repository, **opts)
-      raise TypeError, 'unsupported unencrypted endpoint type' unless directory.is_a?(Endpoint::Bitferry)
-      Volume[directory.volume_tag].vault[tag] = Rclone.obscure(@password = password) # Token is stored on the decrypted end only
+      raise TypeError, 'unsupported unencrypted endpoint type' unless self.directory.is_a?(Endpoint::Bitferry)
+      Volume[self.directory.volume_tag].vault[tag] = Rclone.obscure(@password = password) # Token is stored on the decrypted end only
     end
 
 
@@ -993,7 +989,7 @@ module Bitferry
     end
 
 
-    def execute(*args, simulate: false, **opts)
+    def execute(*args, simulate: false, chdir: nil)
       cmd = [Restic.executable] + args
       ENV['RESTIC_PASSWORD'] = password
       cms = cmd.collect(&:shellescape).join(' ')
@@ -1003,16 +999,14 @@ module Bitferry
         log.info('(simulated)')
         true
       else
-        case system(*cmd, **opts) # using system() to prevent gobbling output channels
-          when nil
-            log.error("restic execution failure")
-            raise
-          when false
-            log.error("restic exit code #{$?.to_i}")
-            raise
-          else return true
+        wd = Dir.getwd unless chdir.nil?
+        begin
+          Dir.chdir(chdir) unless chdir.nil?
+          status = Open3.pipeline(cmd).first
+          raise "restic exit code #{status.exitstatus}" unless status.success?
+        ensure
+          Dir.chdir(wd) unless chdir.nil?
         end
-        false
       end
     end
 
