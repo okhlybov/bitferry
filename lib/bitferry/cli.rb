@@ -22,21 +22,42 @@ Encryption = %{
 }
 
 
+$encryption = nil
+$profile = 'default'
+
+
 def setup_rclone_task(x)
   x.parameter 'SOURCE', 'Source endpoint specifier'
   x.parameter 'DESTINATION', 'Destination endpoint specifier'
-  x.option ['--process'], 'OPTIONS', 'Extra processing options' do |opts| $process = opts end
-  x.option ['--encrypt', '-e'], 'OPTIONS', 'Encrypt files in destination' do |opts|
-    $encryption = Bitferry::Rclone::Encrypt.new(obtain_password, process: decode_options(opts, Bitferry::Rclone::Encryption::PROCESS))
+  x.option '-e', :flag, 'Encrypt files in destination using default profile (alias for -E default)', attribute_name: :encrypt do
+    $encryption = Bitferry::Rclone::Encrypt
   end
-  x.option ['--decrypt', '-d'], 'OPTIONS', 'Decrypt source files' do |opts|
-    $encryption = Bitferry::Rclone::Decrypt.new(obtain_password, process: decode_options(opts, Bitferry::Rclone::Encryption::PROCESS))
+  x.option '-d', :flag, 'Decrypt source files using default profile (alias for -D default)', attribute_name: :decrypt do
+    $encryption = Bitferry::Rclone::Decrypt
+  end
+  x.option '-x', :flag, 'Use extended profile as default (applies to -e, -d)', attribute_name: :profile do
+    $profile = 'extended'
+  end
+  x.option ['--process', '-X'], 'OPTIONS', 'Extra task processing profile/options' do |opts|
+    $process = opts
+  end
+  x.option ['--encrypt', '-E'], 'OPTIONS', 'Encrypt files in destination using specified profile/options' do |opts|
+    $encryption = Bitferry::Rclone::Encrypt
+    $profile = opts
+  end
+  x.option ['--decrypt', '-D'], 'OPTIONS', 'Decrypt source files using specified profile/options' do |opts|
+    $encryption = Bitferry::Rclone::Decrypt
+    $profile = opts
   end
 end
 
 
 def create_rclone_task(type, *args, **opts)
-  type.new(*args, process: decode_options($process, Bitferry::Rclone::Task::PROCESS), encryption: $encryption, **opts)
+  type.new(*args,
+    process: decode_options($process, Bitferry::Rclone::Task::PROCESS),
+    encryption: $encryption.nil? ? nil : $encryption.new(obtain_password, process: decode_options($profile, Bitferry::Rclone::Encryption::PROCESS)),
+    **opts
+  )
 end
 
 
@@ -212,16 +233,37 @@ Clamp do
       end
 
 
+      subcommand ['equalize', 'bisync', 'e'], 'Create two way sync task' do
+        banner %{
+          Create source <-> destination two way file synchronization task.
+      
+          The task operates recursively on two specified endpoints.
+          This task retains only the most recent versions of files on both endpoints.
+          Opon execution both endpoints are left identical.
+      
+          #{Endpoint}
+
+          #{Encryption}
+      
+          This task employs the Rclone worker.
+        }
+        setup_rclone_task(self)
+        def execute
+          bitferry { create_rclone_task(Bitferry::Rclone::Equalize, source, destination) }
+        end
+      end
+
+
       subcommand ['backup', 'b'], 'Create backup task' do
         banner %{
           Create source --> repository incremental backup task.
           This task employs the Restic worker.
         }
-        option ['--process'], 'OPTIONS', 'Extra processing options' do |opts| $process = opts end
-        option ['--forget'], 'OPTIONS', 'Repository forgetting (snapshot retention policy) options' do |opts| $forget = opts end
-        option ['--check'], 'OPTIONS', 'Repository checking options' do |opts| $check = opts end
         option '--force', :flag, 'Force overwriting existing repository' do $format = true end
-        option ['--attach', '-a'], :flag, 'Attach to existing repository' do $format = false end
+        option ['--attach', '-a'], :flag, 'Attach to existing repository (instead of formatting)' do $format = false end
+        option ['--process', '-X'], 'OPTIONS', 'Extra task processing profile/options' do |opts| $process = opts end
+        option ['--forget', '-F'], 'OPTIONS', 'Repository forgetting profile/options (snapshot retention policy)' do |opts| $forget = opts end
+        option ['--check', '-C'], 'OPTIONS', 'Repository checking profile/options' do |opts| $check = opts end
         parameter 'SOURCE', 'Source endpoint specifier'
         parameter 'REPOSITORY', 'Destination repository endpoint specifier'
         def execute
@@ -232,6 +274,25 @@ Clamp do
               process: decode_options($process, Bitferry::Restic::Backup::PROCESS),
               check: decode_options($check, Bitferry::Restic::Backup::CHECK),
               forget: decode_options($forget, Bitferry::Restic::Backup::FORGET)
+            )
+          }
+        end
+      end
+
+
+      subcommand ['restore', 'r'], 'Create restore task' do
+        banner %{
+          Create repository --> destination restore task.
+          This task employs the Restic worker.
+        }
+        option ['--process', '-X'], 'OPTIONS', 'Extra task processing profile/options' do |opts| $process = opts end
+        parameter 'REPOSITORY', 'Source repository endpoint specifier'
+        parameter 'DESTINATION', 'Destination endpoint specifier'
+        def execute
+          bitferry {
+            Bitferry::Restic::Restore.new(
+              destination, repository, obtain_password,
+              process: decode_options($process, Bitferry::Restic::Restore::PROCESS),
             )
           }
         end

@@ -632,7 +632,7 @@ module Bitferry
     def self.obscure(plain) = exec('obscure', plain)
 
 
-    def self.reveal(token) = exec('reveal', token)
+    def self.reveal(token) = exec('reveal', token) # FIXME handle -???? hyphen-started token case 
 
 
   end
@@ -642,7 +642,8 @@ module Bitferry
 
 
     PROCESS = {
-      'default' => ['--crypt-filename-encoding', 'base32', '--crypt-filename-encryption', 'standard']
+      'default' => ['--crypt-filename-encoding', :base32, '--crypt-filename-encryption', :standard],
+      'extended' => ['--crypt-filename-encoding', :base32768, '--crypt-filename-encryption', :standard]
     }
 
 
@@ -831,6 +832,7 @@ module Bitferry
       log.info(cms)
       status = Open3.pipeline(cmd).first
       raise "rclone exit code #{status.exitstatus}" unless status.success?
+      status.success?
     end
 
 
@@ -1053,7 +1055,7 @@ module Bitferry
 
 
     PROCESS = {
-      'default' => []
+      'default' => ['--no-cache']
     }
 
 
@@ -1167,12 +1169,17 @@ module Bitferry
   class Restic::Restore < Restic::Task
 
 
-    attr_reader :restore_options
+    PROCESS = {
+      'default' => ['--no-cache']
+    }
 
 
-    def create(*, restore: [], **opts)
+    attr_reader :process_options
+
+
+    def create(*, process: nil, **opts)
       super(*, **opts)
-      @restore_options = restore
+      @process_options = process.nil? ? [] : process
     end
 
 
@@ -1186,9 +1193,8 @@ module Bitferry
 
 
     def externalize
-
       restic = {
-        restore: restore_options.empty? ? nil : restore_options
+        process: process_options.empty? ? nil : process_options
       }.compact
       super.merge({
         operation: :restore,
@@ -1200,14 +1206,14 @@ module Bitferry
     def restore(hash)
       super
       opts = hash.fetch(:rclone, {})
-      @restore_options = opts.fetch(:restore, [])
+      @process_options = opts.fetch(:process, [])
     end
 
 
     def process
       log.info("processing task #{tag}")
       begin
-        execute('restore', 'latest', '--target', '.', *restore_options, *common_options, simulate: Bitferry.simulate?, chdir: directory.root)
+        execute('restore', 'latest', '--target', '.', *process_options, *common_options, simulate: Bitferry.simulate?, chdir: directory.root)
         true
       rescue
         false
