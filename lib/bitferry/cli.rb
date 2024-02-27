@@ -87,9 +87,14 @@ end
 
 def decode_options(opts, hash)
   # * nil -> nil
+  # * "" -> []
   # * default -> hash[default]
   # * --foo,bar -> [--foo, bar]
-  opts.nil? ? nil : (opts.start_with?('-') ? opts.split(',') : hash.fetch(opts))
+  case opts
+    when nil then nil
+    when '' then []
+    else opts.start_with?('-') ? opts.split(',') : hash.fetch(opts)
+  end
 end
 
 
