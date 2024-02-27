@@ -306,7 +306,7 @@ module Bitferry
     def restore(root)
       hash = JSON.load_file(storage = Pathname(root).join(STORAGE), { symbolize_names: true })
       raise IOError, "bad volume storage #{storage}" unless hash.fetch(:bitferry) == "0"
-      initialize(root, tag: hash.fetch(:tag), modified: DateTime.parse(hash.fetch(:modified)))
+      initialize(root, tag: hash.fetch(:volume), modified: DateTime.parse(hash.fetch(:modified)))
       hash.fetch(:tasks, []).each { |hash| Task::ROUTE.fetch(hash.fetch(:operation).intern).restore(hash) }
       @vault = hash.fetch(:vault, {}).transform_keys { |key| key.to_s }
       @state = :intact
@@ -440,7 +440,7 @@ module Bitferry
       v = vault.filter { |t| !Task[t].nil? && Task[t].live? } # Purge entries from non-existing (deleted) tasks
       {
         bitferry: "0",
-        tag: tag,
+        volume: tag,
         modified: (@modified = DateTime.now),
         tasks: tasks.empty? ? nil : tasks.collect(&:externalize),
         vault: v.empty? ? nil : v
@@ -557,7 +557,7 @@ module Bitferry
 
     def externalize
       {
-        tag: tag,
+        task: tag,
         modified: @modified
       }.compact
     end
@@ -874,7 +874,7 @@ module Bitferry
       initialize(
         restore_endpoint(hash.fetch(:source)),
         restore_endpoint(hash.fetch(:destination)),
-        tag: hash.fetch(:tag),
+        tag: hash.fetch(:task),
         modified: hash.fetch(:modified, DateTime.now),
         process: hash[:rclone],
         encryption: hash[:encryption].nil? ? nil : Rclone::Encryption.restore(hash[:encryption])
@@ -1058,7 +1058,7 @@ module Bitferry
       initialize(
         restore_endpoint(hash.fetch(:directory)),
         restore_endpoint(hash.fetch(:repository)),
-        tag: hash.fetch(:tag),
+        tag: hash.fetch(:task),
         modified: hash.fetch(:modified, DateTime.now)
       )
       super(hash)
