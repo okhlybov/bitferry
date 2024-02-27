@@ -27,11 +27,11 @@ def setup_rclone_task(x)
   x.parameter 'DESTINATION', 'Destination endpoint specifier'
   x.option '-e', :flag, 'Encrypt files in destination using default profile (alias for -E default)', attribute_name: :e do
     $encryption = Bitferry::Rclone::Encrypt
-    $profile = 'default'
+    $profile = :default
   end
   x.option '-d', :flag, 'Decrypt source files using default profile (alias for -D default)', attribute_name: :d do
     $encryption = Bitferry::Rclone::Decrypt
-    $profile = 'default'
+    $profile = :default
   end
   x.option '-x', :flag, 'Use extended encryption profile options (applies to -e, -d)', attribute_name: :x do
     $extended = true
@@ -53,7 +53,7 @@ end
 def create_rclone_task(task, *args, **opts)
   task.new(*args,
     process: $process,
-    encryption: $encryption&.new(obtain_password, process: $extended ? 'extended' : $profile),
+    encryption: $encryption&.new(obtain_password, process: $extended ? :extended : $profile),
     **opts
   )
 end
@@ -79,19 +79,6 @@ def obtain_password
     p1
   else
     $stdin.readline.strip!
-  end
-end
-
-
-def decode_options(opts, hash)
-  # * nil -> nil
-  # * "" -> []
-  # * default -> hash[default]
-  # * --foo,bar -> [--foo, bar]
-  case opts
-    when nil then nil
-    when '' then []
-    else opts.start_with?('-') ? opts.split(',') : hash.fetch(opts)
   end
 end
 
@@ -263,9 +250,9 @@ Clamp do
           This task employs the Restic worker.
         }
         option '--force', :flag, 'Force overwriting existing repository' do $format = true end
-        option '-f', :flag, 'Rig for application of the snapshot retention policy (alias for -F default)', attribute_name: :f do $forget = 'default' end
-        option '-c', :flag, 'Rig for repository checking (alias for -C default)', attribute_name: :c do $check = 'default' end
-        option ['--attach', '-a'], :flag, 'Attach to existing repository (instead of formatting)' do $format = false end
+        option ['--attach', '-a'], :flag, 'Attach to existing repository' do $format = false end
+        option '-f', :flag, 'Rig for application of the snapshot retention policy (alias for -F default)', attribute_name: :f do $forget = :default end
+        option '-c', :flag, 'Rig for repository checking (alias for -C default)', attribute_name: :c do $check = :default end
         option ['--process', '-X'], 'OPTIONS', 'Extra task processing profile/options' do |opts| $process = opts end
         option ['--forget', '-F'], 'OPTIONS', 'Rig for snapshot retention policy with profile/options' do |opts| $forget = opts end
         option ['--check', '-C'], 'OPTIONS', 'Rig for repository checking with profile/options' do |opts| $check = opts end
@@ -273,7 +260,7 @@ Clamp do
         parameter 'REPOSITORY', 'Destination repository endpoint specifier'
         def execute
           bitferry {
-            (task = Bitferry::Restic::Backup).new(
+            Bitferry::Restic::Backup.new(
               source, repository, obtain_password,
               format: $format,
               process: $process,
@@ -295,7 +282,7 @@ Clamp do
         parameter 'DESTINATION', 'Destination endpoint specifier'
         def execute
           bitferry {
-            (task = Bitferry::Restic::Restore).new(
+            Bitferry::Restic::Restore.new(
               destination, repository, obtain_password,
               process: $process,
             )

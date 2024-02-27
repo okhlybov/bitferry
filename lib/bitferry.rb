@@ -306,7 +306,7 @@ module Bitferry
       hash = JSON.load_file(storage = Pathname(root).join(STORAGE), { symbolize_names: true })
       raise IOError, "bad volume storage #{storage}" unless hash.fetch(:bitferry) == "0"
       initialize(root, tag: hash.fetch(:tag), modified: DateTime.parse(hash.fetch(:modified)))
-      hash.fetch(:tasks, []).each { |hash| Task::ROUTE.fetch(hash.fetch(:operation)).restore(hash) }
+      hash.fetch(:tasks, []).each { |hash| Task::ROUTE.fetch(hash.fetch(:operation).intern).restore(hash) }
       @vault = hash.fetch(:vault, {}).transform_keys { |key| key.to_s }
       @state = :intact
       @modified = false
@@ -551,7 +551,7 @@ module Bitferry
 
 
     # FIXME move to Endpoint#restore
-    def restore_endpoint(x) = Endpoint::ROUTE.fetch(x.fetch(:endpoint)).restore(x)
+    def restore_endpoint(x) = Endpoint::ROUTE.fetch(x.fetch(:endpoint).intern).restore(x)
 
 
     def externalize
@@ -656,10 +656,10 @@ module Bitferry
 
 
     PROCESS = {
-      'default' => ['--crypt-filename-encoding', :base32, '--crypt-filename-encryption', :standard],
-      'extended' => ['--crypt-filename-encoding', :base32768, '--crypt-filename-encryption', :standard]
+      default: ['--crypt-filename-encoding', :base32, '--crypt-filename-encryption', :standard],
+      extended: ['--crypt-filename-encoding', :base32768, '--crypt-filename-encryption', :standard]
     }
-    PROCESS[nil] = PROCESS['default']
+    PROCESS[nil] = PROCESS[:default]
 
 
     def process_options = @process_options.nil? ? [] : @process_options # As a mandatory option it should never be nil
@@ -757,7 +757,10 @@ module Bitferry
   end
 
 
-  Rclone::Encryption::ROUTE = { encrypt: Rclone::Encrypt, decrypt: Rclone::Decrypt }
+  Rclone::Encryption::ROUTE = {
+    encrypt: Rclone::Encrypt,
+    decrypt: Rclone::Decrypt
+  }
 
 
   class Rclone::Task < Task
@@ -773,9 +776,9 @@ module Bitferry
 
 
     PROCESS = {
-      'default' => ['--metadata']
+      default: ['--metadata']
     }
-    PROCESS[nil] = PROCESS['default']
+    PROCESS[nil] = PROCESS[:default]
 
 
     def initialize(source, destination, encryption: nil, process: nil, **opts)
@@ -1068,21 +1071,20 @@ module Bitferry
 
 
     PROCESS = {
-      'default' => ['--no-cache']
+      default: ['--no-cache']
     }
-    PROCESS[nil] = PROCESS['default']
+    PROCESS[nil] = PROCESS[:default]
 
 
     FORGET = {
-      'default' => ['--prune', '--keep-within-hourly', '24h', '--keep-within-daily', '7d', '--keep-within-weekly', '30d', '--keep-within-monthly', '1y', '--keep-within-yearly', '100y']
+      default: ['--prune', '--keep-within-hourly', '24h', '--keep-within-daily', '7d', '--keep-within-weekly', '30d', '--keep-within-monthly', '1y', '--keep-within-yearly', '100y']
     }
     FORGET[nil] = nil # Skip processing retention policy by default
 
 
     CHECK = {
-      'fast' => [],
-      'default' => [],
-      'full' => ['--read-data']
+      default: [],
+      full: ['--read-data']
     }
     CHECK[nil] = nil # Skip integrity checking by default
 
@@ -1185,9 +1187,9 @@ module Bitferry
 
 
     PROCESS = {
-      'default' => ['--no-cache', '--sparse']
+      default: ['--no-cache', '--sparse']
     }
-    PROCESS[nil] = PROCESS['default']
+    PROCESS[nil] = PROCESS[:default]
 
 
     def create(*, process: nil, **opts)
@@ -1226,6 +1228,7 @@ module Bitferry
     def process
       log.info("processing task #{tag}")
       begin
+        # FIXME restore specifically tagged latest snapshot
         execute('restore', 'latest', '--target', '.', *process_options, *common_options, simulate: Bitferry.simulate?, chdir: directory.root)
         true
       rescue
@@ -1238,12 +1241,12 @@ module Bitferry
 
 
   Task::ROUTE = {
-    'copy' => Rclone::Copy,
-    'update' => Rclone::Update,
-    'synchronize' => Rclone::Synchronize,
-    'equalize' => Rclone::Equalize,
-    'backup' => Restic::Backup,
-    'restore' => Restic::Restore
+    copy: Rclone::Copy,
+    update: Rclone::Update,
+    synchronize: Rclone::Synchronize,
+    equalize: Rclone::Equalize,
+    backup: Restic::Backup,
+    restore: Restic::Restore
   }
 
 
@@ -1352,7 +1355,11 @@ module Bitferry
   end
 
 
-  Endpoint::ROUTE = { 'local' => Endpoint::Local, 'rclone' => Endpoint::Rclone, 'bitferry' => Endpoint::Bitferry }
+  Endpoint::ROUTE = {
+    local: Endpoint::Local,
+    rclone: Endpoint::Rclone,
+    bitferry: Endpoint::Bitferry
+  }
 
 
   reset
