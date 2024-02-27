@@ -629,10 +629,10 @@ module Bitferry
     end
 
 
-    def self.obscure(plain) = exec('obscure', plain)
+    def self.obscure(plain) = exec('obscure', '--', plain)
 
 
-    def self.reveal(token) = exec('reveal', token) # FIXME handle -???? hyphen-started token case 
+    def self.reveal(token) = exec('reveal', '--', token)
 
 
   end
