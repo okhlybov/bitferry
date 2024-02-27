@@ -22,21 +22,19 @@ Encryption = %{
 }
 
 
-$encryption = nil
-$profile = 'default'
-
-
 def setup_rclone_task(x)
   x.parameter 'SOURCE', 'Source endpoint specifier'
   x.parameter 'DESTINATION', 'Destination endpoint specifier'
-  x.option '-e', :flag, 'Encrypt files in destination using default profile (alias for -E default)', attribute_name: :encrypt do
+  x.option '-e', :flag, 'Encrypt files in destination using default profile (alias for -E default)', attribute_name: :e do
     $encryption = Bitferry::Rclone::Encrypt
+    $profile = 'default'
   end
-  x.option '-d', :flag, 'Decrypt source files using default profile (alias for -D default)', attribute_name: :decrypt do
+  x.option '-d', :flag, 'Decrypt source files using default profile (alias for -D default)', attribute_name: :d do
     $encryption = Bitferry::Rclone::Decrypt
+    $profile = 'default'
   end
-  x.option '-x', :flag, 'Use extended profile as default (applies to -e, -d)', attribute_name: :profile do
-    $profile = 'extended'
+  x.option '-x', :flag, 'Use extended encryption profile options (applies to -e, -d)', attribute_name: :x do
+    $extended = true
   end
   x.option ['--process', '-X'], 'OPTIONS', 'Extra task processing profile/options' do |opts|
     $process = opts
@@ -52,10 +50,10 @@ def setup_rclone_task(x)
 end
 
 
-def create_rclone_task(type, *args, **opts)
-  type.new(*args,
-    process: decode_options($process, Bitferry::Rclone::Task::PROCESS),
-    encryption: $encryption.nil? ? nil : $encryption.new(obtain_password, process: decode_options($profile, Bitferry::Rclone::Encryption::PROCESS)),
+def create_rclone_task(task, *args, **opts)
+  task.new(*args,
+    process: $process,
+    encryption: $encryption&.new(obtain_password, process: $extended ? 'extended' : $profile),
     **opts
   )
 end
@@ -265,20 +263,22 @@ Clamp do
           This task employs the Restic worker.
         }
         option '--force', :flag, 'Force overwriting existing repository' do $format = true end
+        option '-f', :flag, 'Rig for application of the snapshot retention policy (alias for -F default)', attribute_name: :f do $forget = 'default' end
+        option '-c', :flag, 'Rig for repository checking (alias for -C default)', attribute_name: :c do $check = 'default' end
         option ['--attach', '-a'], :flag, 'Attach to existing repository (instead of formatting)' do $format = false end
         option ['--process', '-X'], 'OPTIONS', 'Extra task processing profile/options' do |opts| $process = opts end
-        option ['--forget', '-F'], 'OPTIONS', 'Repository forgetting profile/options (snapshot retention policy)' do |opts| $forget = opts end
-        option ['--check', '-C'], 'OPTIONS', 'Repository checking profile/options' do |opts| $check = opts end
+        option ['--forget', '-F'], 'OPTIONS', 'Rig for snapshot retention policy with profile/options' do |opts| $forget = opts end
+        option ['--check', '-C'], 'OPTIONS', 'Rig for repository checking with profile/options' do |opts| $check = opts end
         parameter 'SOURCE', 'Source endpoint specifier'
         parameter 'REPOSITORY', 'Destination repository endpoint specifier'
         def execute
           bitferry {
-            Bitferry::Restic::Backup.new(
+            (task = Bitferry::Restic::Backup).new(
               source, repository, obtain_password,
               format: $format,
-              process: decode_options($process, Bitferry::Restic::Backup::PROCESS),
-              check: decode_options($check, Bitferry::Restic::Backup::CHECK),
-              forget: decode_options($forget, Bitferry::Restic::Backup::FORGET)
+              process: $process,
+              check: $check,
+              forget: $forget
             )
           }
         end
@@ -295,9 +295,9 @@ Clamp do
         parameter 'DESTINATION', 'Destination endpoint specifier'
         def execute
           bitferry {
-            Bitferry::Restic::Restore.new(
+            (task = Bitferry::Restic::Restore).new(
               destination, repository, obtain_password,
-              process: decode_options($process, Bitferry::Restic::Restore::PROCESS),
+              process: $process,
             )
           }
         end

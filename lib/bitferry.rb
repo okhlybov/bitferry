@@ -471,6 +471,16 @@ module Bitferry
   end
 
 
+  def self.optional(option, route)
+    case option
+    when Array then option # Array is passed verbatim
+    when '-' then nil # Disable adding any options with -
+    when /^-/ then option.split(',') # Split comma-separated string into array --foo,bar --> [--foo, bar]
+    else route.fetch(option) # Obtain array from the database
+    end
+  end
+
+
   class Task
 
 
@@ -485,6 +495,9 @@ module Bitferry
 
 
     attr_reader :modified
+
+
+    def process_options = @process_options.nil? ? [] : @process_options # As a mandatory option it should never be nil
 
 
     def self.new(*, **)
@@ -520,6 +533,7 @@ module Bitferry
       @tag = tag
       @generation = 0
       @modified = modified
+      # FIXME handle process_options at this level
     end
 
 
@@ -645,13 +659,14 @@ module Bitferry
       'default' => ['--crypt-filename-encoding', :base32, '--crypt-filename-encryption', :standard],
       'extended' => ['--crypt-filename-encoding', :base32768, '--crypt-filename-encryption', :standard]
     }
+    PROCESS[nil] = PROCESS['default']
 
 
-    attr_reader :process_options
+    def process_options = @process_options.nil? ? [] : @process_options # As a mandatory option it should never be nil
 
 
     def initialize(token, process: nil)
-      @process_options = process.nil? ? [] : process
+      @process_options = Bitferry.optional(process, PROCESS)
       @token = token
     end
 
@@ -659,7 +674,7 @@ module Bitferry
     def create(password, **) = initialize(Rclone.obscure(password), **)
 
 
-    def restore(hash) = @process_options = hash.fetch(:rclone, [])
+    def restore(hash) = @process_options = hash[:rclone]
 
 
     def externalize = process_options.empty? ? {} : { rclone: process_options }
@@ -757,17 +772,15 @@ module Bitferry
     attr_reader :token
 
 
-    attr_reader :process_options
-
-
     PROCESS = {
-      'default' => ['--preserve-metadata']
+      'default' => ['--metadata']
     }
+    PROCESS[nil] = PROCESS['default']
 
 
     def initialize(source, destination, encryption: nil, process: nil, **opts)
       super(**opts)
-      @process_options = process.nil? ? [] : process
+      @process_options = Bitferry.optional(process, PROCESS)
       @source = source.is_a?(Endpoint) ? source : Bitferry.endpoint(source)
       @destination = destination.is_a?(Endpoint) ? destination : Bitferry.endpoint(destination)
       @encryption = encryption
@@ -859,7 +872,7 @@ module Bitferry
         restore_endpoint(hash.fetch(:destination)),
         tag: hash.fetch(:tag),
         modified: hash.fetch(:modified, DateTime.now),
-        process: hash.fetch(:rclone, []),
+        process: hash[:rclone],
         encryption: hash[:encryption].nil? ? nil : Rclone::Encryption.restore(hash[:encryption])
       )
       super(hash)
@@ -1057,11 +1070,13 @@ module Bitferry
     PROCESS = {
       'default' => ['--no-cache']
     }
+    PROCESS[nil] = PROCESS['default']
 
 
     FORGET = {
       'default' => ['--prune', '--keep-within-hourly', '24h', '--keep-within-daily', '7d', '--keep-within-weekly', '30d', '--keep-within-monthly', '1y', '--keep-within-yearly', '100y']
     }
+    FORGET[nil] = nil # Skip processing retention policy by default
 
 
     CHECK = {
@@ -1069,9 +1084,9 @@ module Bitferry
       'default' => [],
       'full' => ['--read-data']
     }
+    CHECK[nil] = nil # Skip integrity checking by default
 
 
-    attr_reader :process_options
     attr_reader :forget_options
     attr_reader :check_options
 
@@ -1079,9 +1094,9 @@ module Bitferry
     def create(*, format: nil, process: nil, forget: nil, check: nil, **opts)
       super(*, **opts)
       @format = format
-      @process_options = process.nil? ? [] : process
-      @forget_options = forget
-      @check_options = check
+      @process_options = Bitferry.optional(process, PROCESS)
+      @forget_options = Bitferry.optional(forget, FORGET)
+      @check_options = Bitferry.optional(check, CHECK)
     end
 
 
@@ -1104,7 +1119,7 @@ module Bitferry
         end
         unless forget_options.nil?
           log.info("performing repository maintenance tasks in #{repository.root}")
-          execute('forget', *forget_options.collect(&:to_s), *common_options_simulate)
+          execute('forget', '--tag', "bitferry,#{tag}", *forget_options.collect(&:to_s), *common_options_simulate)
         end
         true
       rescue
@@ -1118,7 +1133,7 @@ module Bitferry
 
     def externalize
       restic = {
-        process: process_options.empty? ? nil : process_options,
+        process: process_options,
         forget: forget_options,
         check: check_options
       }.compact
@@ -1132,9 +1147,9 @@ module Bitferry
     def restore(hash)
       super
       opts = hash.fetch(:restic, {})
-      @process_options = opts.fetch(:process, [])
-      @forget_options = opts.fetch(:forget, nil)
-      @check_options = opts.fetch(:check, nil)
+      @process_options = opts[:process]
+      @forget_options = opts[:forget]
+      @check_options = opts[:check]
     end
 
 
@@ -1170,16 +1185,14 @@ module Bitferry
 
 
     PROCESS = {
-      'default' => ['--no-cache']
+      'default' => ['--no-cache', '--sparse']
     }
-
-
-    attr_reader :process_options
+    PROCESS[nil] = PROCESS['default']
 
 
     def create(*, process: nil, **opts)
       super(*, **opts)
-      @process_options = process.nil? ? [] : process
+      @process_options = Bitferry.optional(process, PROCESS)
     end
 
 
@@ -1194,7 +1207,7 @@ module Bitferry
 
     def externalize
       restic = {
-        process: process_options.empty? ? nil : process_options
+        process: process_options
       }.compact
       super.merge({
         operation: :restore,
@@ -1206,7 +1219,7 @@ module Bitferry
     def restore(hash)
       super
       opts = hash.fetch(:rclone, {})
-      @process_options = opts.fetch(:process, [])
+      @process_options = opts[:process]
     end
 
 
