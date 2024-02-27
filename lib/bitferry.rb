@@ -3,6 +3,7 @@ require 'date'
 require 'open3'
 require 'logger'
 require 'pathname'
+require 'neatjson'
 require 'rbconfig'
 require 'fileutils'
 require 'shellwords'
@@ -390,7 +391,7 @@ module Bitferry
 
     def store
       tasks.each(&:commit)
-      hash = JSON.pretty_generate(externalize)
+      hash = JSON.neat_generate(externalize, short: false, wrap: 200, afterColon: 1, afterComma: 1)
       if Bitferry.simulate?
         log.info("skipped volume #{tag} storage modification (simulation)")
       else

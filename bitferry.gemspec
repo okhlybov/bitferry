@@ -19,4 +19,5 @@ spec = Gem::Specification.new do |s|
   s.add_development_dependency('rdoc')
   s.add_development_dependency('down', '~> 5.0')
   s.add_runtime_dependency('clamp','~> 1.3.2')
+  s.add_runtime_dependency('neatjson','~> 0.10.5')
 end
