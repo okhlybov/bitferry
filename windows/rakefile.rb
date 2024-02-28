@@ -2,6 +2,12 @@ require 'down'
 require 'digest'
 require 'ostruct'
 
+require File.join([File.dirname(__FILE__), '..', 'lib', 'bitferry.rb'])
+
+Release = 1
+
+Version = Bitferry::VERSION
+
 # Download from URL, verify and extract archive
 class Source < OpenStruct
 
@@ -25,7 +31,7 @@ class Source < OpenStruct
     file
   end
 
-  def extract
+  def extract(destination)
     file = fetch
     case file
     when /zip$/
@@ -39,9 +45,13 @@ class Source < OpenStruct
 
 end
 
+Cache = 'cache'
+
 Build = 'build'
 
-Cache = 'cache'
+Bitferry = 'bitferry'
+
+Runtime = "#{Build}/#{Bitferry}"
 
 Ruby = Source.new(
   version: '3.2.3',
@@ -85,26 +95,27 @@ end
 
 namespace :ruby do
   task :extract => :pristine do
-    Ruby.extract
+    Ruby.extract(Build)
   end
   task :normalize => :extract do
     cd Build do
-      mv Dir['rubyinstaller-*'].first, 'ruby'
+      mv Dir['rubyinstaller-*'].first, Bitferry
     end
   end
   task :configure => :normalize do
-    cd "#{Build}/ruby/bin" do
-      start 'gem install fxruby'
+    cd "#{Runtime}/bin" do
+    #start 'gem install bitferry'
+    #start 'gem install fxruby'
     end
   end
   task :ruby => :configure do
-    cd "#{Build}/ruby" do
-      rm_rf Dir['include', 'share', 'packages', 'ridk_use']
+    cd Runtime do
+      rm_rf Dir['include', 'share', 'packages', 'ridk_use', 'LICENSE*']
       rm_rf Dir['bin/ridk*', 'lib/*.a', 'lib/pkgconfig', 'lib/ruby/gems/*/cache/*', 'lib/ruby/gems/*/doc/*']
     end
   end
-  task :fxruby => :ruby do
-    cd Dir["#{Build}/ruby/lib/ruby/gems/*/gems/fxruby-*"].first do
+  task :fxruby => :configure do
+    cd Dir["#{Runtime}/lib/ruby/gems/*/gems/fxruby-*"].first do
       rb = RbConfig::CONFIG['MAJOR'] + '.' + RbConfig::CONFIG['MINOR']
       Dir.children('.').delete_if { |x| /(lib|ports)$/.match?(x) }.each { |x| rm_rf x }
       Dir['lib/*'].delete_if { |x| /^lib\/(#{rb}|fox16)/.match?(x) }.each { |x| rm_rf x }
@@ -114,14 +125,34 @@ end
 
 namespace :restic do
   task :extract => :pristine do
-    Restic.extract
+    Restic.extract(Build)
   end
 end
 
 namespace :rclone do
   task :extract => :pristine do
-    Rclone.extract
+    Rclone.extract(Build)
   end
 end
 
-task :default => 'ruby:fxruby'
+task :runtime => ['ruby:ruby', 'restic:extract', 'rclone:extract'] do
+  site = Dir["#{Runtime}/lib/ruby/site_ruby/*"].first
+  dir = "#{site}/bitferry"
+  mkdir_p dir
+  cp 'windows.rb', dir
+  cp 'bitferry.cmd', Runtime
+  mv Dir["#{Build}/restic*.exe"].first, "#{Runtime}/bin/restic.exe"
+  mv Dir["#{Build}/rclone*/rclone.exe"].first, "#{Runtime}/bin"; rm_rf Dir["#{Build}/rclone*"]
+end
+
+task :zip => :runtime do
+  cd Build do
+    sh "zip -r -9 -o #{Bitferry}-#{Version}-win32-#{Release}.zip #{Bitferry}"
+  end
+end
+
+task :installer => :runtime do
+  # wine cmd /c '"%programfiles%\inno setup 6\compil32"'
+end
+
+task :default => :zip

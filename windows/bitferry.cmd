@@ -1,0 +1,1 @@
+@"%~dp0bin/ruby.exe" -r bitferry/windows "%~dp0bin/bitferry" %*
