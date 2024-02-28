@@ -1,0 +1,3 @@
+- Include/exclude filters
+- Rclone remote endpoints
+- Exclude specific tasks from auto processing
