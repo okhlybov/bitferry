@@ -6,7 +6,7 @@ The [Bitferry](https://github.com/okhlybov/bitferry) is aimed at establishing th
 
 The intended usage ranges from maintaining simple directory copy to another location (disk, mount point) to complex many-to-many (online/offline) data replication/backup solution utilizing portable media as additional data copy and a means of data propagation between the offsites.
 
-Technically it is a frontend to [Rclone](https://rclone.org/) and [Restic](https://restic.net/) utilities.
+Technically it is a frontend to the [Rclone](https://rclone.org/) and [Restic](https://restic.net/) utilities.
 
 ## Features
 
@@ -14,9 +14,9 @@ Technically it is a frontend to [Rclone](https://rclone.org/) and [Restic](https
 
 * Automatized task-based data processing
 
-* Recursive directory copy / update / synchronize
-
 * One way / two way data synchronization
+
+* Recursive directory copy / update / synchronize
 
 * Incremental directory backup with snapshotting
 
@@ -50,28 +50,37 @@ The source code is hosted on [GitHub](https://github.com/okhlybov/bitferry) and 
 
 ## Installation
 
-Being a Ruby code, the Bitferry requires the platform-specific Ruby runtime, version 3.0 or higher.
+There are several options available for obtaining Bitferry:
 
+* GEM package
 
+* Platform-specific bundle
 
+### GEM package
 
+Being a Ruby code, the Bitferry requires the platform-specific Ruby runtime, version 3.0 or higher. Next, the platform-specific Rclone and Restic executables are also required to be accessible through the `PATH` directory list or through the respective `RCLONE` and `RESTIC` environment variables.
 
+For Windows, the recommended Ruby vendor is [RubyInstaller](https://rubyinstaller.org/). Any Ruby 3 build should be good; a 32-bit version can be used in either 32 ot 64 -bit Windows. Specifically, this one [Win32 Ruby version 3.2](https://github.com/oneclick/rubyinstaller2/releases/download/RubyInstaller-3.2.3-1/rubyinstaller-3.2.3-1-x86.exe) should be fine. The prerequisite utilities are obtainable form the respective download pages [Rclone](https://github.com/rclone/rclone/releases) and [Restic](https://github.com/restic/restic/releases). As these programs are under active development, it is recommended to grab the latest versions. Note that there is no need to match the bitness of the three components.
 
+For UNIX, the Ruby runtime installation is system-specific. For instance,
 
+- Debian/Ubuntu Linux
+  
+  ```shell
+  sudo apt install ruby rclone restic
+  ```
+* Arch Linux
+  
+  ```shell
+  sudo pacman -S ruby rclone restic
+  ```
 
+Once the platform-specific prerequisites are installed the Bitferry itself is one command away
 
+```shell
+gem install bitferry
+```
 
-
-
-
-
-
-
-
-
-
-
-
-
+## The rest
 
 Despite all claims the online cloud backup is unreliable and thus it is very unwise to use it as the main (if only) backup solution.
