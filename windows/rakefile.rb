@@ -104,7 +104,7 @@ namespace :ruby do
   end
   task :configure => :normalize do
     cd "#{Runtime}/bin" do
-    #start 'gem install bitferry'
+    start "gem install bitferry -N --version #{Version}"
     #start 'gem install fxruby'
     end
   end
