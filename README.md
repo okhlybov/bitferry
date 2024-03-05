@@ -1,12 +1,13 @@
 # Bitferry - file replication/backup automation utility
 
-<div align="right"><i>Ein Backup ist kein Backup</i></div>
+<div align="right"><i>Ein Backup ist kein Backup</i></div><br><br>
 
 The [Bitferry](https://github.com/okhlybov/bitferry) is aimed at establishing the automated file replication/backup routes between multiple endpoints where the latter can be the local directories, online cloud remotes or portable offline storages.
 
 The intended usage ranges from maintaining simple directory copy to another location (disk, mount point) to complex many-to-many (online/offline) data replication/backup solution utilizing portable media as additional data copy and a means of data propagation between the offsites.
 
-Technically it is a frontend to the [Rclone](https://rclone.org/) and [Restic](https://restic.net/) utilities.
+Bitferry is a frontend to the [Rclone](https://rclone.org) and [Restic](https://restic.net) utilities.
+
 
 ## Features
 
@@ -26,6 +27,7 @@ Technically it is a frontend to the [Rclone](https://rclone.org/) and [Restic](h
 
 * Offline portable storage (USB flash, HDDs, SSDs etc.) relay
 
+
 ## Use cases
 
 * Maintain an update-only files copy in a separate location on the same site
@@ -34,11 +36,15 @@ Technically it is a frontend to the [Rclone](https://rclone.org/) and [Restic](h
 
 * Maintain an incremental files backup on a portable medium with multiple offsite copies of the repository
 
+
 ## Implementation
 
-The Bitferry itself is written in [Ruby](https://www.ruby-lang.org) programming language.
+The Bitferry itself is written in [Ruby](https://www.ruby-lang.org) programming language. Being a Ruby code, the Bitferry requires the platform-specific Ruby runtime, version 3.0 or higher. 
 
 The source code is hosted on [GitHub](https://github.com/okhlybov/bitferry) and the binary releases in form of a GEM package are distributed through the [RubyGems](https://rubygems.org/gems/bitferry) repository channel.
+
+In addition, the platform-specific [Rclone](https://github.com/rclone/rclone/releases) and [Restic](https://github.com/restic/restic/releases) executables are required to be accessible through the `PATH` directory list or through the respective `RCLONE` and `RESTIC` environment variables.
+
 
 ## Kickstart
 
@@ -103,6 +109,9 @@ Perform a dry run of the specific task
 bitferry process -vn 89e
 ```
 
+<details>
+<summary>...</summary>
+
 ```
 rclone sync --filter -\ .bitferry --filter -\ .bitferry\~ --verbose --progress --dry-run --metadata --crypt-filename-encoding base32 --crypt-filename-encryption standard --crypt-remote /mnt/usb-drive/backup /data :crypt:
 2024/03/05 11:46:45 NOTICE: README.md: Skipped copy as --dry-run is set (size 3.073Ki)
@@ -117,11 +126,16 @@ Transferred:            3 / 3, 100%
 Elapsed time:         0.0s
 ```
 
+</details>
+
 Process all intact tasks in sequence
 
 ```shell
 bitferry -v x
 ```
+
+<details>
+<summary>...</summary>
 
 ```
 rclone sync --filter -\ .bitferry --filter -\ .bitferry\~ --verbose --progress --metadata --crypt-filename-encoding base32 --crypt-filename-encryption standard --crypt-remote /mnt/usb-drive/backup /data :crypt:
@@ -137,17 +151,24 @@ Transferred:            3 / 3, 100%
 Elapsed time:         0.0s
 ```
 
+</details>
+
 Observe the result
 
 ```shell
 ls -l /mnt/usb-drive/backup
 ```
 
+<details>
+<summary>...</summary>
+
 ```
 -rw-r--r-- 1 user user 1044 feb 27 17:09 0u1vi7ka5p88u62kof9k6mf2z00354g6fa0c9a0g6di2f0ocds80
 -rw-r--r-- 1 user user 1550 jan 29 11:57 21dgu5vs2c4rjfkieeemjvaf78
 -rw-r--r-- 1 user user 3195 mar  5 11:43 m9rhq3q2m5h2q5l1ke00u0gdjc
 ```
+
+</details>
 
 Examine the detailed usage instructions
 
@@ -207,10 +228,6 @@ Options:
 
 ## The rest is about to come
 
-Cheers!
+*Cheers!*
 
 Oleg A. Khlybov <fougas@mail.ru>
-
-```
-
-```
