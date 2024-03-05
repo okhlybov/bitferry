@@ -15,6 +15,7 @@ module Bitferry
   VERSION = '0.0.1'
 
 
+  # :nodoc:
   module Logging
     def self.log
       unless @log
@@ -249,9 +250,9 @@ module Bitferry
     end
 
 
-    def self.new(root, **)
+    def self.new(root, **opts)
       volume = allocate
-      volume.send(:create, root, **)
+      volume.send(:create, root, **opts)
       register(volume)
     end
 
@@ -296,8 +297,8 @@ module Bitferry
     end
 
 
-    def create(*, **)
-      initialize(*, **)
+    def create(*args, **opts)
+      initialize(*args, **opts)
       @state = :pristine
       @modified = true
     end
@@ -501,9 +502,9 @@ module Bitferry
     def process_options = @process_options.nil? ? [] : @process_options # As a mandatory option it should never be nil
 
 
-    def self.new(*, **)
+    def self.new(*args, **opts)
       task = allocate
-      task.send(:create, *, **)
+      task.send(:create, *args, **opts)
       register(task)
     end
 
@@ -538,8 +539,8 @@ module Bitferry
     end
 
 
-    def create(*, **)
-      initialize(*, **)
+    def create(*args, **opts)
+      initialize(*args, **opts)
       @state = :pristine
       touch
     end
@@ -672,7 +673,7 @@ module Bitferry
     end
 
 
-    def create(password, **) = initialize(Rclone.obscure(password), **)
+    def create(password, **opts) = initialize(Rclone.obscure(password), **opts)
 
 
     def restore(hash) = @process_options = hash[:rclone]
@@ -700,9 +701,9 @@ module Bitferry
     def obtain_token(task) = Volume[decrypted(task).volume_tag].vault.fetch(task.tag)
 
 
-    def self.new(*, **)
+    def self.new(*args, **opts)
       obj = allocate
-      obj.send(:create, *, **)
+      obj.send(:create, *args, **opts)
       obj
     end
 
@@ -791,8 +792,8 @@ module Bitferry
     end
 
 
-    def create(*, process: nil, **opts)
-      super(*, process: process, **opts)
+    def create(*args, process: nil, **opts)
+      super(*args, process: process, **opts)
       encryption.configure(self) unless encryption.nil?
     end
 
@@ -1094,8 +1095,8 @@ module Bitferry
     attr_reader :check_options
 
 
-    def create(*, format: nil, process: nil, forget: nil, check: nil, **opts)
-      super(*, **opts)
+    def create(*args, format: nil, process: nil, forget: nil, check: nil, **opts)
+      super(*args, **opts)
       @format = format
       @process_options = Bitferry.optional(process, PROCESS)
       @forget_options = Bitferry.optional(forget, FORGET)
@@ -1193,8 +1194,8 @@ module Bitferry
     PROCESS[nil] = PROCESS[:default]
 
 
-    def create(*, process: nil, **opts)
-      super(*, **opts)
+    def create(*args, process: nil, **opts)
+      super(*args, **opts)
       @process_options = Bitferry.optional(process, PROCESS)
     end
 
