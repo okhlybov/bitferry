@@ -2,7 +2,7 @@
 
 <div align="right"><i>Ein Backup ist kein Backup</i></div>
 
-The [Bitferry](https://github.com/okhlybov/bitferry) is aimed at establishing the automatized file replication/backup routes between multiple endpoints where the latter can be the local directories, online cloud remotes or portable offline storages.
+The [Bitferry](https://github.com/okhlybov/bitferry) is aimed at establishing the automated file replication/backup routes between multiple endpoints where the latter can be the local directories, online cloud remotes or portable offline storages.
 
 The intended usage ranges from maintaining simple directory copy to another location (disk, mount point) to complex many-to-many (online/offline) data replication/backup solution utilizing portable media as additional data copy and a means of data propagation between the offsites.
 
@@ -12,7 +12,7 @@ Technically it is a frontend to the [Rclone](https://rclone.org/) and [Restic](h
 
 * Multiplatform (Windows / UNIX / macOSX) operation
 
-* Automatized task-based data processing
+* Automated task-based data processing
 
 * One way / two way data synchronization
 
@@ -40,47 +40,177 @@ The Bitferry itself is written in [Ruby](https://www.ruby-lang.org) programming 
 
 The source code is hosted on [GitHub](https://github.com/okhlybov/bitferry) and the binary releases in form of a GEM package are distributed through the [RubyGems](https://rubygems.org/gems/bitferry) repository channel.
 
-## Runtime prerequisites
+## Kickstart
 
-* Ruby runtime
-
-* Rclone executable
-
-* Restic executable
-
-## Installation
-
-There are several options available for obtaining Bitferry:
-
-* GEM package
-
-* Platform-specific bundle
-
-### GEM package
-
-Being a Ruby code, the Bitferry requires the platform-specific Ruby runtime, version 3.0 or higher. Next, the platform-specific Rclone and Restic executables are also required to be accessible through the `PATH` directory list or through the respective `RCLONE` and `RESTIC` environment variables.
-
-For Windows, the recommended Ruby vendor is [RubyInstaller](https://rubyinstaller.org/). Any Ruby 3 build should be good; a 32-bit version can be used in either 32 ot 64 -bit Windows. Specifically, this one [Win32 Ruby version 3.2](https://github.com/oneclick/rubyinstaller2/releases/download/RubyInstaller-3.2.3-1/rubyinstaller-3.2.3-1-x86.exe) should be fine. The prerequisite utilities are obtainable form the respective download pages [Rclone](https://github.com/rclone/rclone/releases) and [Restic](https://github.com/restic/restic/releases). As these programs are under active development, it is recommended to grab the latest versions. Note that there is no need to match the bitness of the three components.
-
-For UNIX, the Ruby runtime installation is system-specific. For instance,
-
-- Debian/Ubuntu Linux
-  
-  ```shell
-  sudo apt install ruby rclone restic
-  ```
-* Arch Linux
-  
-  ```shell
-  sudo pacman -S ruby rclone restic
-  ```
-
-Once the platform-specific prerequisites are installed the Bitferry itself is one command away
+Install Bitferry
 
 ```shell
 gem install bitferry
 ```
 
-## The rest
+Prepare source Bitferry volume for a mounted local filesystem
 
-Despite all claims the online cloud backup is unreliable and thus it is very unwise to use it as the main (if only) backup solution.
+```shell
+bitferry create volume /data
+```
+
+Prepare destination Bitferry volume for a mounted portable storage
+
+```shell
+bitferry create volume /mnt/usb-drive
+```
+
+Ensure the volumes are intact
+
+```shell
+bitferry show
+```
+
+```
+# Intact volumes
+
+  d2f10024    /data
+  e42f2d8c    /mnt/usb-drive
+```
+
+Create a (Rclone) sync task with data encryption
+
+```shell
+bitferry create task sync -e /data /mnt/usb-drive/backup
+```
+
+Review the changes
+
+```shell
+bitferry
+```
+
+```
+# Intact volumes
+
+  d2f10024    /data
+  e42f2d8c    /mnt/usb-drive
+
+
+# Intact tasks
+
+  89e1c119    encrypt+synchronize :d2f10024: --> :e42f2d8c:backup
+```
+
+Perform a dry run of the specific task
+
+```shell
+bitferry process -vn 89e
+```
+
+```
+rclone sync --filter -\ .bitferry --filter -\ .bitferry\~ --verbose --progress --dry-run --metadata --crypt-filename-encoding base32 --crypt-filename-encryption standard --crypt-remote /mnt/usb-drive/backup /data :crypt:
+2024/03/05 11:46:45 NOTICE: README.md: Skipped copy as --dry-run is set (size 3.073Ki)
+2024/03/05 11:46:45 NOTICE: LICENSE: Skipped copy as --dry-run is set (size 1.467Ki)
+2024/03/05 11:46:45 NOTICE: bitferry.gemspec: Skipped copy as --dry-run is set (size 996)
+Transferred:        5.513 KiB / 5.513 KiB, 100%, 0 B/s, ETA -
+Transferred:            3 / 3, 100%
+Elapsed time:         0.0s
+2024/03/05 11:46:45 NOTICE: 
+Transferred:        5.513 KiB / 5.513 KiB, 100%, 0 B/s, ETA -
+Transferred:            3 / 3, 100%
+Elapsed time:         0.0s
+```
+
+Process all intact tasks in sequence
+
+```shell
+bitferry -v x
+```
+
+```
+rclone sync --filter -\ .bitferry --filter -\ .bitferry\~ --verbose --progress --metadata --crypt-filename-encoding base32 --crypt-filename-encryption standard --crypt-remote /mnt/usb-drive/backup /data :crypt:
+2024/03/05 11:44:31 INFO  : LICENSE: Copied (new)
+2024/03/05 11:44:31 INFO  : README.md: Copied (new)
+2024/03/05 11:44:31 INFO  : bitferry.gemspec: Copied (new)
+Transferred:        5.653 KiB / 5.653 KiB, 100%, 0 B/s, ETA -
+Transferred:            3 / 3, 100%
+Elapsed time:         0.0s
+2024/03/05 11:44:31 INFO  : 
+Transferred:        5.653 KiB / 5.653 KiB, 100%, 0 B/s, ETA -
+Transferred:            3 / 3, 100%
+Elapsed time:         0.0s
+```
+
+Observe the result
+
+```shell
+ls -l /mnt/usb-drive/backup
+```
+
+```
+-rw-r--r-- 1 user user 1044 feb 27 17:09 0u1vi7ka5p88u62kof9k6mf2z00354g6fa0c9a0g6di2f0ocds80
+-rw-r--r-- 1 user user 1550 jan 29 11:57 21dgu5vs2c4rjfkieeemjvaf78
+-rw-r--r-- 1 user user 3195 mar  5 11:43 m9rhq3q2m5h2q5l1ke00u0gdjc
+```
+
+Examine the detailed usage instructions
+
+```shell
+bitferry c t s -h
+```
+
+<details>
+<summary>...</summary>
+
+```
+Usage:
+    bitferry c t s [OPTIONS] SOURCE DESTINATION
+
+  Create source --> destination one way file synchronization task.
+
+  The task operates recursively on two specified endpoints.
+  This task copies newer source files while skipping unchanged files in destination.
+  Also, it deletes destination files which are non-existent in source.
+
+    The endpoint may be one of:
+    * directory -- absolute or relative local directory (/data, ../source, c:\data)
+    * local:directory, :directory -- absolute local directory (:/data, local:c:\data)
+    * :tag:directory -- path relative to the intact volume matched by (partial) tag (:fa2c:source/data)
+
+    The former case resolves specified directory againt an intact volume to make it volume-relative.
+    It is an error if there is no intact volume that encompasses specified directory.
+    The local: directory is left as is (not resolved against volumes).
+    The :tag: directory is bound to the specified volume.
+
+
+
+    The encryption mode is controlled by --encrypt or --decrypt options.
+    The mandatory password will be read from the standard input channel (pipe or keyboard).
+
+  This task employs the Rclone worker.
+
+Parameters:
+    SOURCE                   Source endpoint specifier
+    DESTINATION              Destination endpoint specifier
+
+Options:
+    -e                       Encrypt files in destination using default profile (alias for -E default)
+    -d                       Decrypt source files using default profile (alias for -D default)
+    -x                       Use extended encryption profile options (applies to -e, -d)
+    --process, -X OPTIONS    Extra task processing profile/options
+    --encrypt, -E OPTIONS    Encrypt files in destination using specified profile/options
+    --decrypt, -D OPTIONS    Decrypt source files using specified profile/options
+    --version                Print version
+    --verbose, -v            Extensive logging
+    --quiet, -q              Disable logging
+    --dry-run, -n            Simulation mode (make no on-disk changes)
+    -h, --help               print help
+```
+
+</details>
+
+## The rest is about to come
+
+Cheers!
+
+Oleg A. Khlybov <fougas@mail.ru>
+
+```
+
+```
