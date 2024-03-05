@@ -12,10 +12,9 @@ require 'shellwords'
 module Bitferry
 
 
-  VERSION = '0.0.1'
+  VERSION = '0.0.2'
 
 
-  # :nodoc:
   module Logging
     def self.log
       unless @log
@@ -488,7 +487,7 @@ module Bitferry
 
     include Logging
     extend  Logging
-  
+
 
     attr_reader :tag
 
@@ -627,7 +626,7 @@ module Bitferry
 
     include Logging
     extend  Logging
-  
+
 
     def self.executable = @executable ||= (rclone = ENV['RCLONE']).nil? ? 'rclone' : rclone
 
@@ -651,300 +650,301 @@ module Bitferry
     def self.reveal(token) = exec('reveal', '--', token)
 
 
-  end
+    class Encryption
 
 
-  class Rclone::Encryption
+      PROCESS = {
+        default: ['--crypt-filename-encoding', :base32, '--crypt-filename-encryption', :standard],
+        extended: ['--crypt-filename-encoding', :base32768, '--crypt-filename-encryption', :standard]
+      }
+      PROCESS[nil] = PROCESS[:default]
 
 
-    PROCESS = {
-      default: ['--crypt-filename-encoding', :base32, '--crypt-filename-encryption', :standard],
-      extended: ['--crypt-filename-encoding', :base32768, '--crypt-filename-encryption', :standard]
+      def process_options = @process_options.nil? ? [] : @process_options # As a mandatory option it should never be nil
+
+
+      def initialize(token, process: nil)
+        @process_options = Bitferry.optional(process, PROCESS)
+        @token = token
+      end
+
+
+      def create(password, **opts) = initialize(Rclone.obscure(password), **opts)
+
+
+      def restore(hash) = @process_options = hash[:rclone]
+
+
+      def externalize = process_options.empty? ? {} : { rclone: process_options }
+
+
+      def configure(task) = install_token(task)
+
+
+      def process(task) = ENV['RCLONE_CRYPT_PASSWORD'] = obtain_token(task)
+
+
+      def arguments(task) = process_options + ['--crypt-remote', encrypted(task).root.to_s]
+
+
+      def install_token(task)
+        x = decrypted(task)
+        raise TypeError, 'unsupported unencrypted endpoint type' unless x.is_a?(Endpoint::Bitferry)
+        Volume[x.volume_tag].vault[task.tag] = @token # Token is stored on the decrypted end only
+      end
+
+
+      def obtain_token(task) = Volume[decrypted(task).volume_tag].vault.fetch(task.tag)
+
+
+      def self.new(*args, **opts)
+        obj = allocate
+        obj.send(:create, *args, **opts)
+        obj
+      end
+
+
+      def self.restore(hash)
+        obj = ROUTE.fetch(hash.fetch(:operation).intern).allocate
+        obj.send(:restore, hash)
+        obj
+      end
+
+
+    end
+
+
+    class Encrypt < Encryption
+
+
+      def encrypted(task) = task.destination
+
+
+      def decrypted(task) = task.source
+
+
+      def externalize = super.merge(operation: :encrypt)
+
+
+      def show_operation = 'encrypt+'
+
+
+      def arguments(task) = super + [decrypted(task).root.to_s, ':crypt:']
+
+
+    end
+
+
+    class Decrypt < Encryption
+
+
+      def encrypted(task) = task.source
+
+
+      def decrypted(task) = task.destination
+
+
+      def externalize = super.merge(operation: :decrypt)
+
+
+      def show_operation = 'decrypt+'
+
+
+      def arguments(task) = super + [':crypt:', decrypted(task).root.to_s]
+
+
+    end
+
+
+    ROUTE = {
+      encrypt: Encrypt,
+      decrypt: Decrypt
     }
-    PROCESS[nil] = PROCESS[:default]
 
 
-    def process_options = @process_options.nil? ? [] : @process_options # As a mandatory option it should never be nil
+    class Task < Bitferry::Task
 
 
-    def initialize(token, process: nil)
-      @process_options = Bitferry.optional(process, PROCESS)
-      @token = token
+      attr_reader :source, :destination
+
+
+      attr_reader :encryption
+
+
+      attr_reader :token
+
+
+      PROCESS = {
+        default: ['--metadata']
+      }
+      PROCESS[nil] = PROCESS[:default]
+
+
+      def initialize(source, destination, encryption: nil, process: nil, **opts)
+        super(**opts)
+        @process_options = Bitferry.optional(process, PROCESS)
+        @source = source.is_a?(Endpoint) ? source : Bitferry.endpoint(source)
+        @destination = destination.is_a?(Endpoint) ? destination : Bitferry.endpoint(destination)
+        @encryption = encryption
+      end
+
+
+      def create(*args, process: nil, **opts)
+        super(*args, process: process, **opts)
+        encryption.configure(self) unless encryption.nil?
+      end
+
+
+      def show_status = "#{show_operation} #{source.show_status} #{show_direction} #{destination.show_status}"
+
+
+      def show_operation = encryption.nil? ? '' : encryption.show_operation
+
+
+      def show_direction = '-->'
+
+
+      def intact? = live? && source.intact? && destination.intact?
+
+
+      def refers?(volume) = source.refers?(volume) || destination.refers?(volume)
+
+
+      def touch
+        @generation = [source.generation, destination.generation].max + 1
+        super
+      end
+
+
+      def format = nil
+
+
+      def common_options
+        [
+          '--config', Bitferry.windows? ? 'NUL' : '/dev/null',
+          case Bitferry.verbosity
+            when :verbose then '--verbose'
+            when :quiet then '--quiet'
+            else nil
+          end,
+          Bitferry.verbosity == :verbose ? '--progress' : nil,
+          Bitferry.simulate? ? '--dry-run' : nil,
+        ].compact
+      end
+
+
+      def process_arguments
+        ['--filter', "- #{Volume::STORAGE}", '--filter', "- #{Volume::STORAGE_}"] + common_options + process_options + (
+          encryption.nil? ? [source.root.to_s, destination.root.to_s] : encryption.arguments(self)
+        )
+      end
+
+
+      def execute(*args)
+        cmd = [Rclone.executable] + args
+        cms = cmd.collect(&:shellescape).join(' ')
+        puts cms if Bitferry.verbosity == :verbose
+        log.info(cms)
+        status = Open3.pipeline(cmd).first
+        raise "rclone exit code #{status.exitstatus}" unless status.success?
+        status.success?
+      end
+
+
+      def process
+        log.info("processing task #{tag}")
+        encryption.process(self) unless encryption.nil?
+        execute(*process_arguments)
+      end
+
+
+      def externalize
+        super.merge(
+          source: source.externalize,
+          destination: destination.externalize,
+          encryption: encryption.nil? ? nil : encryption.externalize,
+          rclone: process_options.empty? ? nil : process_options
+        ).compact
+      end
+
+
+      def restore(hash)
+        initialize(
+          restore_endpoint(hash.fetch(:source)),
+          restore_endpoint(hash.fetch(:destination)),
+          tag: hash.fetch(:task),
+          modified: hash.fetch(:modified, DateTime.now),
+          process: hash[:rclone],
+          encryption: hash[:encryption].nil? ? nil : Rclone::Encryption.restore(hash[:encryption])
+        )
+        super(hash)
+      end
+
+
     end
 
 
-    def create(password, **opts) = initialize(Rclone.obscure(password), **opts)
+    class Copy < Task
 
 
-    def restore(hash) = @process_options = hash[:rclone]
+      def process_arguments = ['copy'] + super
 
 
-    def externalize = process_options.empty? ? {} : { rclone: process_options }
+      def externalize = super.merge(operation: :copy)
 
 
-    def configure(task) = install_token(task)
+      def show_operation = super + 'copy'
 
 
-    def process(task) = ENV['RCLONE_CRYPT_PASSWORD'] = obtain_token(task)
-
-
-    def arguments(task) = process_options + ['--crypt-remote', encrypted(task).root.to_s]
-
-
-    def install_token(task)
-      x = decrypted(task)
-      raise TypeError, 'unsupported unencrypted endpoint type' unless x.is_a?(Endpoint::Bitferry)
-      Volume[x.volume_tag].vault[task.tag] = @token # Token is stored on the decrypted end only
     end
 
 
-    def obtain_token(task) = Volume[decrypted(task).volume_tag].vault.fetch(task.tag)
+    class Update < Task
 
 
-    def self.new(*args, **opts)
-      obj = allocate
-      obj.send(:create, *args, **opts)
-      obj
+      def process_arguments = ['copy', '--update'] + super
+
+
+      def externalize = super.merge(operation: :update)
+
+
+      def show_operation = super + 'update'
+
+
     end
 
 
-    def self.restore(hash)
-      obj = ROUTE.fetch(hash.fetch(:operation).intern).allocate
-      obj.send(:restore, hash)
-      obj
+    class Synchronize < Task
+
+
+      def process_arguments = ['sync'] + super
+
+
+      def externalize = super.merge(operation: :synchronize)
+
+
+      def show_operation = super + 'synchronize'
+
+
     end
 
 
-  end
+    class Equalize < Task
 
 
-  class Rclone::Encrypt < Rclone::Encryption
+      def process_arguments = ['bisync', '--resync'] + super
 
 
-    def encrypted(task) = task.destination
+      def externalize = super.merge(operation: :equalize)
 
 
-    def decrypted(task) = task.source
+      def show_operation = super + 'equalize'
 
 
-    def externalize = super.merge(operation: :encrypt)
+      def show_direction = '<->'
 
 
-    def show_operation = 'encrypt+'
-
-
-    def arguments(task) = super + [decrypted(task).root.to_s, ':crypt:']
-
-
-  end
-
-
-  class Rclone::Decrypt < Rclone::Encryption
-
-
-    def encrypted(task) = task.source
-
-
-    def decrypted(task) = task.destination
-
-
-    def externalize = super.merge(operation: :decrypt)
-
-
-    def show_operation = 'decrypt+'
-
-
-    def arguments(task) = super + [':crypt:', decrypted(task).root.to_s]
-
-  end
-
-
-  Rclone::Encryption::ROUTE = {
-    encrypt: Rclone::Encrypt,
-    decrypt: Rclone::Decrypt
-  }
-
-
-  class Rclone::Task < Task
-
-
-    attr_reader :source, :destination
-
-
-    attr_reader :encryption
-
-
-    attr_reader :token
-
-
-    PROCESS = {
-      default: ['--metadata']
-    }
-    PROCESS[nil] = PROCESS[:default]
-
-
-    def initialize(source, destination, encryption: nil, process: nil, **opts)
-      super(**opts)
-      @process_options = Bitferry.optional(process, PROCESS)
-      @source = source.is_a?(Endpoint) ? source : Bitferry.endpoint(source)
-      @destination = destination.is_a?(Endpoint) ? destination : Bitferry.endpoint(destination)
-      @encryption = encryption
     end
-
-
-    def create(*args, process: nil, **opts)
-      super(*args, process: process, **opts)
-      encryption.configure(self) unless encryption.nil?
-    end
-
-
-    def show_status = "#{show_operation} #{source.show_status} #{show_direction} #{destination.show_status}"
-
-
-    def show_operation = encryption.nil? ? '' : encryption.show_operation
-
-
-    def show_direction = '-->'
-
-
-    def intact? = live? && source.intact? && destination.intact?
-
-
-    def refers?(volume) = source.refers?(volume) || destination.refers?(volume)
-
-
-    def touch
-      @generation = [source.generation, destination.generation].max + 1
-      super
-    end
-
-
-    def format = nil
-
-
-    def common_options
-      [
-        '--config', Bitferry.windows? ? 'NUL' : '/dev/null',
-        case Bitferry.verbosity
-          when :verbose then '--verbose'
-          when :quiet then '--quiet'
-          else nil
-        end,
-        Bitferry.verbosity == :verbose ? '--progress' : nil,
-        Bitferry.simulate? ? '--dry-run' : nil,
-      ].compact
-    end
-
-
-    def process_arguments
-      ['--filter', "- #{Volume::STORAGE}", '--filter', "- #{Volume::STORAGE_}"] + common_options + process_options + (
-        encryption.nil? ? [source.root.to_s, destination.root.to_s] : encryption.arguments(self)
-      )
-    end
-
-
-    def execute(*args)
-      cmd = [Rclone.executable] + args
-      cms = cmd.collect(&:shellescape).join(' ')
-      puts cms if Bitferry.verbosity == :verbose
-      log.info(cms)
-      status = Open3.pipeline(cmd).first
-      raise "rclone exit code #{status.exitstatus}" unless status.success?
-      status.success?
-    end
-
-
-    def process
-      log.info("processing task #{tag}")
-      encryption.process(self) unless encryption.nil?
-      execute(*process_arguments)
-    end
-
-
-    def externalize
-      super.merge(
-        source: source.externalize,
-        destination: destination.externalize,
-        encryption: encryption.nil? ? nil : encryption.externalize,
-        rclone: process_options.empty? ? nil : process_options
-      ).compact
-    end
-
-
-    def restore(hash)
-      initialize(
-        restore_endpoint(hash.fetch(:source)),
-        restore_endpoint(hash.fetch(:destination)),
-        tag: hash.fetch(:task),
-        modified: hash.fetch(:modified, DateTime.now),
-        process: hash[:rclone],
-        encryption: hash[:encryption].nil? ? nil : Rclone::Encryption.restore(hash[:encryption])
-      )
-      super(hash)
-    end
-
-
-  end
-
-
-  class Rclone::Copy < Rclone::Task
-
-
-    def process_arguments = ['copy'] + super
-
-
-    def externalize = super.merge(operation: :copy)
-
-
-    def show_operation = super + 'copy'
-
-
-  end
-
-
-  class Rclone::Update < Rclone::Task
-
-
-    def process_arguments = ['copy', '--update'] + super
-
-
-    def externalize = super.merge(operation: :update)
-
-
-    def show_operation = super + 'update'
-
-
-  end
-
-
-  class Rclone::Synchronize < Rclone::Task
-
-
-    def process_arguments = ['sync'] + super
-
-
-    def externalize = super.merge(operation: :synchronize)
-
-
-    def show_operation = super + 'synchronize'
-
-
-  end
-
-
-  class Rclone::Equalize < Rclone::Task
-
-
-    def process_arguments = ['bisync', '--resync'] + super
-
-
-    def externalize = super.merge(operation: :equalize)
-
-
-    def show_operation = super + 'equalize'
-
-
-    def show_direction = '<->'
 
 
   end
@@ -955,7 +955,7 @@ module Bitferry
 
     include Logging
     extend  Logging
-  
+
 
     def self.executable = @executable ||= (restic = ENV['RESTIC']).nil? ? 'restic' : restic
 
@@ -973,270 +973,273 @@ module Bitferry
     end
 
 
-  end
+    class Task < Bitferry::Task
 
 
-  class Restic::Task < Task
+      attr_reader :directory, :repository
 
 
-    attr_reader :directory, :repository
-
-
-    def initialize(directory, repository, **opts)
-      super(**opts)
-      @directory = directory.is_a?(Endpoint) ? directory : Bitferry.endpoint(directory)
-      @repository = repository.is_a?(Endpoint) ? repository : Bitferry.endpoint(repository)
-    end
-
-
-    def create(directory, repository, password, **opts)
-      super(directory, repository, **opts)
-      raise TypeError, 'unsupported unencrypted endpoint type' unless self.directory.is_a?(Endpoint::Bitferry)
-      Volume[self.directory.volume_tag].vault[tag] = Rclone.obscure(@password = password) # Token is stored on the decrypted end only
-    end
-
-
-    def password = @password ||= Rclone.reveal(Volume[directory.volume_tag].vault.fetch(tag))
-
-
-    def intact? = live? && directory.intact? && repository.intact?
-
-
-    def refers?(volume) = directory.refers?(volume) || repository.refers?(volume)
-
-
-    def touch
-      @generation = [directory.generation, repository.generation].max + 1
-      super
-    end
-
-    def format = nil
-
-
-    def common_options
-      [
-        case Bitferry.verbosity
-          when :verbose then '--verbose'
-          when :quiet then '--quiet'
-          else nil
-        end,
-        '-r', repository.root.to_s
-      ].compact
-    end
-
-
-    def execute(*args, simulate: false, chdir: nil)
-      cmd = [Restic.executable] + args
-      ENV['RESTIC_PASSWORD'] = password
-      cms = cmd.collect(&:shellescape).join(' ')
-      puts cms if Bitferry.verbosity == :verbose
-      log.info(cms)
-      if simulate
-        log.info('(simulated)')
-        true
-      else
-        wd = Dir.getwd unless chdir.nil?
-        begin
-          Dir.chdir(chdir) unless chdir.nil?
-          status = Open3.pipeline(cmd).first
-          raise "restic exit code #{status.exitstatus}" unless status.success?
-        ensure
-          Dir.chdir(wd) unless chdir.nil?
-        end
+      def initialize(directory, repository, **opts)
+        super(**opts)
+        @directory = directory.is_a?(Endpoint) ? directory : Bitferry.endpoint(directory)
+        @repository = repository.is_a?(Endpoint) ? repository : Bitferry.endpoint(repository)
       end
-    end
 
 
-    def externalize
-      super.merge(
-        directory: directory.externalize,
-        repository: repository.externalize,
-      ).compact
-    end
-
-
-    def restore(hash)
-      initialize(
-        restore_endpoint(hash.fetch(:directory)),
-        restore_endpoint(hash.fetch(:repository)),
-        tag: hash.fetch(:task),
-        modified: hash.fetch(:modified, DateTime.now)
-      )
-      super(hash)
-    end
-
-
-  end
-
-
-  class Restic::Backup < Restic::Task
-
-
-    PROCESS = {
-      default: ['--no-cache']
-    }
-    PROCESS[nil] = PROCESS[:default]
-
-
-    FORGET = {
-      default: ['--prune', '--keep-within-hourly', '24h', '--keep-within-daily', '7d', '--keep-within-weekly', '30d', '--keep-within-monthly', '1y', '--keep-within-yearly', '100y']
-    }
-    FORGET[nil] = nil # Skip processing retention policy by default
-
-
-    CHECK = {
-      default: [],
-      full: ['--read-data']
-    }
-    CHECK[nil] = nil # Skip integrity checking by default
-
-
-    attr_reader :forget_options
-    attr_reader :check_options
-
-
-    def create(*args, format: nil, process: nil, forget: nil, check: nil, **opts)
-      super(*args, **opts)
-      @format = format
-      @process_options = Bitferry.optional(process, PROCESS)
-      @forget_options = Bitferry.optional(forget, FORGET)
-      @check_options = Bitferry.optional(check, CHECK)
-    end
-
-
-    def show_status = "#{show_operation} #{directory.show_status} #{show_direction} #{repository.show_status}"
-
-
-    def show_operation = 'encrypt+backup'
-
-
-    def show_direction = '-->'
-
-
-    def process
-      begin
-        log.info("processing task #{tag}")
-        execute('backup', '.', '--tag', "bitferry,#{tag}", '--exclude', Volume::STORAGE, '--exclude', Volume::STORAGE_, *process_options, *common_options_simulate, chdir: directory.root)
-        unless check_options.nil?
-          log.info("checking repository in #{repository.root}")
-          execute('check', *check_options, *common_options)
-        end
-        unless forget_options.nil?
-          log.info("performing repository maintenance tasks in #{repository.root}")
-          execute('forget', '--tag', "bitferry,#{tag}", *forget_options.collect(&:to_s), *common_options_simulate)
-        end
-        true
-      rescue
-        false
+      def create(directory, repository, password, **opts)
+        super(directory, repository, **opts)
+        raise TypeError, 'unsupported unencrypted endpoint type' unless self.directory.is_a?(Endpoint::Bitferry)
+        Volume[self.directory.volume_tag].vault[tag] = Rclone.obscure(@password = password) # Token is stored on the decrypted end only
       end
-    end
 
 
-    def common_options_simulate = common_options + [Bitferry.simulate? ? '--dry-run' : nil].compact
+      def password = @password ||= Rclone.reveal(Volume[directory.volume_tag].vault.fetch(tag))
 
 
-    def externalize
-      restic = {
-        process: process_options,
-        forget: forget_options,
-        check: check_options
-      }.compact
-      super.merge({
-        operation: :backup,
-        restic: restic.empty? ? nil : restic
-      }.compact)
-    end
+      def intact? = live? && directory.intact? && repository.intact?
 
 
-    def restore(hash)
-      super
-      opts = hash.fetch(:restic, {})
-      @process_options = opts[:process]
-      @forget_options = opts[:forget]
-      @check_options = opts[:check]
-    end
+      def refers?(volume) = directory.refers?(volume) || repository.refers?(volume)
 
 
-    def format
-      if Bitferry.simulate?
-        log.info('skipped repository initialization (simulation)')
-      else
-        log.info("initializing repository for task #{tag}")
-        if @format == true
-          log.debug("wiping repository in #{repository.root}")
-          ['config', 'data', 'index', 'keys', 'locks', 'snapshots'].each { |x| FileUtils.rm_rf(File.join(repository.root.to_s, x)) }
-        end
-        if @format == false
-          # TODO validate existing repo
-          log.info("attached to existing repository for task #{tag} in #{repository.root}")
+      def touch
+        @generation = [directory.generation, repository.generation].max + 1
+        super
+      end
+
+
+      def format = nil
+
+
+      def common_options
+        [
+          case Bitferry.verbosity
+            when :verbose then '--verbose'
+            when :quiet then '--quiet'
+            else nil
+          end,
+          '-r', repository.root.to_s
+        ].compact
+      end
+
+
+      def execute(*args, simulate: false, chdir: nil)
+        cmd = [Restic.executable] + args
+        ENV['RESTIC_PASSWORD'] = password
+        cms = cmd.collect(&:shellescape).join(' ')
+        puts cms if Bitferry.verbosity == :verbose
+        log.info(cms)
+        if simulate
+          log.info('(simulated)')
+          true
         else
+          wd = Dir.getwd unless chdir.nil?
           begin
-            execute(*common_options, 'init')
-            log.info("initialized repository for task #{tag} in #{repository.root}")
-          rescue
-            log.fatal("failed to initialize repository for task #{tag} in #{repository.root}")
-            raise
+            Dir.chdir(chdir) unless chdir.nil?
+            status = Open3.pipeline(cmd).first
+            raise "restic exit code #{status.exitstatus}" unless status.success?
+          ensure
+            Dir.chdir(wd) unless chdir.nil?
           end
         end
       end
-      @state = :intact
-    end
-
-  end
 
 
-  class Restic::Restore < Restic::Task
-
-
-    PROCESS = {
-      default: ['--no-cache', '--sparse']
-    }
-    PROCESS[nil] = PROCESS[:default]
-
-
-    def create(*args, process: nil, **opts)
-      super(*args, **opts)
-      @process_options = Bitferry.optional(process, PROCESS)
-    end
-
-
-    def show_status = "#{show_operation} #{repository.show_status} #{show_direction} #{directory.show_status}"
-
-
-    def show_operation = 'decrypt+restore'
-
-
-    def show_direction = '-->'
-
-
-    def externalize
-      restic = {
-        process: process_options
-      }.compact
-      super.merge({
-        operation: :restore,
-        restic: restic.empty? ? nil : restic
-      }.compact)
-    end
-
-
-    def restore(hash)
-      super
-      opts = hash.fetch(:rclone, {})
-      @process_options = opts[:process]
-    end
-
-
-    def process
-      log.info("processing task #{tag}")
-      begin
-        # FIXME restore specifically tagged latest snapshot
-        execute('restore', 'latest', '--target', '.', *process_options, *common_options, simulate: Bitferry.simulate?, chdir: directory.root)
-        true
-      rescue
-        false
+      def externalize
+        super.merge(
+          directory: directory.externalize,
+          repository: repository.externalize,
+        ).compact
       end
+
+
+      def restore(hash)
+        initialize(
+          restore_endpoint(hash.fetch(:directory)),
+          restore_endpoint(hash.fetch(:repository)),
+          tag: hash.fetch(:task),
+          modified: hash.fetch(:modified, DateTime.now)
+        )
+        super(hash)
+      end
+
+
     end
+
+
+    class Backup < Task
+
+
+      PROCESS = {
+        default: ['--no-cache']
+      }
+      PROCESS[nil] = PROCESS[:default]
+
+
+      FORGET = {
+        default: ['--prune', '--keep-within-hourly', '24h', '--keep-within-daily', '7d', '--keep-within-weekly', '30d', '--keep-within-monthly', '1y', '--keep-within-yearly', '100y']
+      }
+      FORGET[nil] = nil # Skip processing retention policy by default
+
+
+      CHECK = {
+        default: [],
+        full: ['--read-data']
+      }
+      CHECK[nil] = nil # Skip integrity checking by default
+
+
+      attr_reader :forget_options
+      attr_reader :check_options
+
+
+      def create(*args, format: nil, process: nil, forget: nil, check: nil, **opts)
+        super(*args, **opts)
+        @format = format
+        @process_options = Bitferry.optional(process, PROCESS)
+        @forget_options = Bitferry.optional(forget, FORGET)
+        @check_options = Bitferry.optional(check, CHECK)
+      end
+
+
+      def show_status = "#{show_operation} #{directory.show_status} #{show_direction} #{repository.show_status}"
+
+
+      def show_operation = 'encrypt+backup'
+
+
+      def show_direction = '-->'
+
+
+      def process
+        begin
+          log.info("processing task #{tag}")
+          execute('backup', '.', '--tag', "bitferry,#{tag}", '--exclude', Volume::STORAGE, '--exclude', Volume::STORAGE_, *process_options, *common_options_simulate, chdir: directory.root)
+          unless check_options.nil?
+            log.info("checking repository in #{repository.root}")
+            execute('check', *check_options, *common_options)
+          end
+          unless forget_options.nil?
+            log.info("performing repository maintenance tasks in #{repository.root}")
+            execute('forget', '--tag', "bitferry,#{tag}", *forget_options.collect(&:to_s), *common_options_simulate)
+          end
+          true
+        rescue
+          false
+        end
+      end
+
+
+      def common_options_simulate = common_options + [Bitferry.simulate? ? '--dry-run' : nil].compact
+
+
+      def externalize
+        restic = {
+          process: process_options,
+          forget: forget_options,
+          check: check_options
+        }.compact
+        super.merge({
+          operation: :backup,
+          restic: restic.empty? ? nil : restic
+        }.compact)
+      end
+
+
+      def restore(hash)
+        super
+        opts = hash.fetch(:restic, {})
+        @process_options = opts[:process]
+        @forget_options = opts[:forget]
+        @check_options = opts[:check]
+      end
+
+
+      def format
+        if Bitferry.simulate?
+          log.info('skipped repository initialization (simulation)')
+        else
+          log.info("initializing repository for task #{tag}")
+          if @format == true
+            log.debug("wiping repository in #{repository.root}")
+            ['config', 'data', 'index', 'keys', 'locks', 'snapshots'].each { |x| FileUtils.rm_rf(File.join(repository.root.to_s, x)) }
+          end
+          if @format == false
+            # TODO validate existing repo
+            log.info("attached to existing repository for task #{tag} in #{repository.root}")
+          else
+            begin
+              execute(*common_options, 'init')
+              log.info("initialized repository for task #{tag} in #{repository.root}")
+            rescue
+              log.fatal("failed to initialize repository for task #{tag} in #{repository.root}")
+              raise
+            end
+          end
+        end
+        @state = :intact
+      end
+
+
+    end
+
+
+    class Restore < Task
+
+
+      PROCESS = {
+        default: ['--no-cache', '--sparse']
+      }
+      PROCESS[nil] = PROCESS[:default]
+
+
+      def create(*args, process: nil, **opts)
+        super(*args, **opts)
+        @process_options = Bitferry.optional(process, PROCESS)
+      end
+
+
+      def show_status = "#{show_operation} #{repository.show_status} #{show_direction} #{directory.show_status}"
+
+
+      def show_operation = 'decrypt+restore'
+
+
+      def show_direction = '-->'
+
+
+      def externalize
+        restic = {
+          process: process_options
+        }.compact
+        super.merge({
+          operation: :restore,
+          restic: restic.empty? ? nil : restic
+        }.compact)
+      end
+
+
+      def restore(hash)
+        super
+        opts = hash.fetch(:rclone, {})
+        @process_options = opts[:process]
+      end
+
+
+      def process
+        log.info("processing task #{tag}")
+        begin
+          # FIXME restore specifically tagged latest snapshot
+          execute('restore', 'latest', '--target', '.', *process_options, *common_options, simulate: Bitferry.simulate?, chdir: directory.root)
+          true
+        rescue
+          false
+        end
+      end
+
+
+    end
+
 
 
   end
@@ -1262,106 +1265,106 @@ module Bitferry
     end
 
 
+    class Local < Endpoint
+
+
+      attr_reader :root
+
+
+      def initialize(root) = @root = Pathname.new(root).realdirpath
+
+
+      def restore(hash) = initialize(hash.fetch(:root))
+
+
+      def externalize
+        {
+          endpoint: :local,
+          root: root
+        }
+      end
+
+
+      def show_status = root.to_s
+
+
+      def intact? = true
+
+
+      def refers?(volume) = false
+
+
+      def generation = 0
+
+
+    end
+
+
+    class Rclone < Endpoint
+      # TODO
+    end
+
+
+    class Bitferry < Endpoint
+
+
+      attr_reader :volume_tag
+
+
+      attr_reader :path
+
+
+      def root = Volume[volume_tag].root.join(path)
+
+
+      def initialize(volume, path)
+        @volume_tag = volume.tag
+        @path = Pathname.new(path)
+        raise ArgumentError, "expected relative path but got #{self.path}" unless (/^[\.\/]/ =~ self.path.to_s).nil?
+      end
+
+
+      def restore(hash)
+        @volume_tag = hash.fetch(:volume)
+        @path = Pathname.new(hash.fetch(:path))
+      end
+
+
+      def externalize
+        {
+          endpoint: :bitferry,
+          volume: volume_tag,
+          path: path
+        }
+      end
+
+
+      def show_status = intact? ? ":#{volume_tag}:#{path}" : ":{#{volume_tag}}:#{path}"
+
+
+      def intact? = !Volume[volume_tag].nil?
+
+
+      def refers?(volume) = volume.tag == volume_tag
+
+
+      def generation
+        v = Volume[volume_tag]
+        v ? v.generation : 0
+      end
+
+
+    end
+
+
+    ROUTE = {
+      local: Local,
+      rclone: Rclone,
+      bitferry: Bitferry
+    }
+
+
   end
-
-
-  class Endpoint::Local < Endpoint
-
-
-    attr_reader :root
-
-
-    def initialize(root) = @root = Pathname.new(root).realdirpath
-
-
-    def restore(hash) = initialize(hash.fetch(:root))
-
-
-    def externalize
-      {
-        endpoint: :local,
-        root: root
-      }
-    end
-
-
-    def show_status = root.to_s
-
-
-    def intact? = true
-
-
-    def refers?(volume) = false
-
-
-    def generation = 0
-
-
-  end
-
-
-  class Endpoint::Rclone < Endpoint
-    # TODO
-  end
-
-
-  class Endpoint::Bitferry < Endpoint
-
-
-    attr_reader :volume_tag
-
-
-    attr_reader :path
-
-
-    def root = Volume[volume_tag].root.join(path)
-
-
-    def initialize(volume, path)
-      @volume_tag = volume.tag
-      @path = Pathname.new(path)
-      raise ArgumentError, "expected relative path but got #{self.path}" unless (/^[\.\/]/ =~ self.path.to_s).nil?
-    end
-
-
-    def restore(hash)
-      @volume_tag = hash.fetch(:volume)
-      @path = Pathname.new(hash.fetch(:path))
-    end
-
-
-    def externalize
-      {
-        endpoint: :bitferry,
-        volume: volume_tag,
-        path: path
-      }
-    end
-
-
-    def show_status = intact? ? ":#{volume_tag}:#{path}" : ":{#{volume_tag}}:#{path}"
-
-
-    def intact? = !Volume[volume_tag].nil?
-
-
-    def refers?(volume) = volume.tag == volume_tag
-
-
-    def generation
-      v = Volume[volume_tag]
-      v ? v.generation : 0
-    end
-
-
-  end
-
-
-  Endpoint::ROUTE = {
-    local: Endpoint::Local,
-    rclone: Endpoint::Rclone,
-    bitferry: Endpoint::Bitferry
-  }
 
 
   reset

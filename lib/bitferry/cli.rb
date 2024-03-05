@@ -165,14 +165,14 @@ Clamp do
       subcommand ['copy', 'c'], 'Create copy task' do
         banner %{
           Create source --> destination file copy task.
-      
+
           The task operates recursively on two specified endpoints.
           This task unconditionally copies all source files overwriting existing files in destination.
-      
+
           #{Endpoint}
-      
+
           #{Encryption}
-          
+
           This task employs the Rclone worker.
         }
         setup_rclone_task(self)
@@ -185,12 +185,12 @@ Clamp do
       subcommand ['update', 'u'], 'Create update task' do
         banner %{
           Create source --> destination file update (freshen) task.
-      
+
           The task operates recursively on two specified endpoints.
           This task copies newer source files while skipping unchanged files in destination.
-      
+
           #{Endpoint}
-      
+
           #{Encryption}
 
           This task employs the Rclone worker.
@@ -205,15 +205,15 @@ Clamp do
       subcommand ['synchronize', 'sync', 's'], 'Create one way sync task' do
         banner %{
           Create source --> destination one way file synchronization task.
-      
+
           The task operates recursively on two specified endpoints.
           This task copies newer source files while skipping unchanged files in destination.
           Also, it deletes destination files which are non-existent in source.
-      
+
           #{Endpoint}
 
           #{Encryption}
-      
+
           This task employs the Rclone worker.
         }
         setup_rclone_task(self)
@@ -226,15 +226,15 @@ Clamp do
       subcommand ['equalize', 'bisync', 'e'], 'Create two way sync task' do
         banner %{
           Create source <-> destination two way file synchronization task.
-      
+
           The task operates recursively on two specified endpoints.
           This task retains only the most recent versions of files on both endpoints.
           Opon execution both endpoints are left identical.
-      
+
           #{Endpoint}
 
           #{Encryption}
-      
+
           This task employs the Rclone worker.
         }
         setup_rclone_task(self)
