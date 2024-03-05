@@ -1,4 +1,4 @@
-# Bitferry - file synchronization/backup automation tool
+# Bitferry - file synchronization/backup automation
 
 <div align="right"><i>Ein Backup ist kein Backup</i></div><br><br>
 
