@@ -1,10 +1,10 @@
-# Bitferry - file replication/backup automation utility
+# Bitferry - file synchronization/backup automation tool
 
 <div align="right"><i>Ein Backup ist kein Backup</i></div><br><br>
 
-The [Bitferry](https://github.com/okhlybov/bitferry) is aimed at establishing the automated file replication/backup routes between multiple endpoints where the latter can be the local directories, online cloud remotes or portable offline storages.
+The [Bitferry](https://github.com/okhlybov/bitferry) is aimed at establishing the automated file synchronization/replication/backup routes between multiple endpoints where the latter can be the local directories, online cloud remotes or portable offline storages.
 
-The intended usage ranges from maintaining simple directory copy to another location (disk, mount point) to complex many-to-many (online/offline) data replication/backup solution utilizing portable media as additional data copy and a means of data propagation between the offsites.
+The intended usage ranges from maintaining simple directory copy to another location (disk, mount point) to complex many-to-many (online/offline) data replication/backup solution employing portable media as additional data storage and a means of data propagation between the offsites.
 
 Bitferry is a frontend to the [Rclone](https://rclone.org) and [Restic](https://restic.net) utilities.
 
