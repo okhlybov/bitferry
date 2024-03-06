@@ -6,8 +6,9 @@ The [Bitferry](https://github.com/okhlybov/bitferry) is aimed at establishing th
 
 The intended usage ranges from maintaining simple directory copy to another location (disk, mount point) to complex many-to-many (online/offline) data replication/backup solution employing portable media as additional data storage and a means of data propagation between the offsites.
 
-Bitferry is a frontend to the [Rclone](https://rclone.org) and [Restic](https://restic.net) utilities.
+The core idea that drives Bitferry is the conversion of full (absolute) endpoint's paths into the volume-relative ones, where the volume is a data file which is put along the endpoint's data and denotes the root of the directory hierarchy. This leads to the important location independence property meaning that Bitferry is then able to restore the tasks' source-destination endpoint connections in spite of the volume location changes, which is a likely scenario in case of portable storage (different UNIX mount points, Windows drives etc.).
 
+Bitferry is effectively a frontend to the [Rclone](https://rclone.org) and [Restic](https://restic.net) utilities.
 
 ## Features
 
@@ -27,7 +28,6 @@ Bitferry is a frontend to the [Rclone](https://rclone.org) and [Restic](https://
 
 * Offline portable storage (USB flash, HDDs, SSDs etc.) relay
 
-
 ## Use cases
 
 * Maintain an update-only files copy in a separate location on the same site
@@ -36,7 +36,6 @@ Bitferry is a frontend to the [Rclone](https://rclone.org) and [Restic](https://
 
 * Maintain an incremental files backup on a portable medium with multiple offsite copies of the repository
 
-
 ## Implementation
 
 The Bitferry itself is written in [Ruby](https://www.ruby-lang.org) programming language. Being a Ruby code, the Bitferry requires the platform-specific Ruby runtime, version 3.0 or higher. 
@@ -44,7 +43,6 @@ The Bitferry itself is written in [Ruby](https://www.ruby-lang.org) programming 
 The source code is hosted on [GitHub](https://github.com/okhlybov/bitferry) and the binary releases in form of a GEM package are distributed through the [RubyGems](https://rubygems.org/gems/bitferry) repository channel.
 
 In addition, the platform-specific [Rclone](https://github.com/rclone/rclone/releases) and [Restic](https://github.com/restic/restic/releases) executables are required to be accessible through the `PATH` directory list or through the respective `RCLONE` and `RESTIC` environment variables.
-
 
 ## Kickstart
 

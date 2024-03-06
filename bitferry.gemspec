@@ -10,7 +10,7 @@ Gem::Specification.new do |s|
   s.platform = Gem::Platform::RUBY
   s.required_ruby_version = '>= 3.0.0'
   s.summary = 'File synchronization/backup automation tool'
-  s.files = Dir['bin/*', 'lib/**/*', 'README.md'] # `git ls-files`.split("\n")
+  s.files = Dir['bin/*', 'lib/**/*', 'README.md', 'CHANGES.md'] # `git ls-files`.split("\n")
   s.require_paths << 'lib'
   #s.extra_rdoc_files = ['README.rdoc','bitferry.rdoc']
   #s.rdoc_options << '--title' << 'bitferry' << '--main' << 'README.rdoc' << '-ri'
