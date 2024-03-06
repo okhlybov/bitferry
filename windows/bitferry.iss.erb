@@ -1,0 +1,44 @@
+#define MyAppName "Bitferry"
+#define MyAppVersion "<%=bitferry%>"
+#define MyAppRelease "<%=release%>"
+#define MyAppPublisher "Oleg A. Khlybov"
+#define MyAppURL "https://github.com/okhlybov/bitferry"
+
+[Setup]
+AppId={{5BADB2EB-9EDC-48DC-BF3C-C4E93FDC98BA}
+AppName={#MyAppName}
+AppVersion={#MyAppVersion}
+AppVerName={#MyAppName} {#MyAppVersion}
+AppPublisher={#MyAppPublisher}
+AppPublisherURL={#MyAppURL}
+AppSupportURL={#MyAppURL}
+AppUpdatesURL={#MyAppURL}
+OutputBaseFilename=bitferry-{#MyAppVersion}-win32-{#MyAppRelease}
+DefaultDirName={autopf}\{#MyAppName}
+DefaultGroupName={#MyAppName}
+AllowNoIcons=yes
+LicenseFile=..\LICENSE
+InfoBeforeFile=README.txt
+OutputDir=build
+Compression=lzma2
+SolidCompression=yes
+WizardStyle=modern
+ChangesEnvironment=yes
+
+[Languages]
+Name: "english"; MessagesFile: "compiler:Default.isl"
+
+[Files]
+Source: "build\bitferry\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs setntfscompression
+
+[Tasks]
+Name: "syspath"; Description: "Include Bitferry command in system wide PATH"
+
+[Code]
+
+#include "path.iss"
+
+procedure RegisterPaths;
+begin
+  if WizardIsTaskSelected('syspath') then RegisterPath('{app}', SystemPath, Prepend);
+end;

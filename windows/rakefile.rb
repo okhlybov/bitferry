@@ -152,7 +152,9 @@ task :zip => :runtime do
 end
 
 task :installer => :runtime do
-  # wine cmd /c '"%programfiles%\inno setup 6\compil32"'
+  sh "erb bitferry=#{Version} release=#{Release} bitferry.iss.erb > bitferry.iss"
+  sh "erb bitferry=#{Version} rclone=#{Rclone.version} restic=#{Restic.version} README.txt.erb > README.txt"
+  start 'iss.cmd'
 end
 
-task :default => :zip
+task :default => :installer
