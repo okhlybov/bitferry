@@ -51,7 +51,7 @@ Build = 'build'
 
 Bitferry = 'bitferry'
 
-Runtime = "#{Build}/#{Bitferry}"
+Runtime = "#{Build}/bitferry/runtime"
 
 Ruby = Source.new(
   version: '3.2.3',
@@ -98,9 +98,8 @@ namespace :ruby do
     Ruby.extract(Build)
   end
   task :normalize => :extract do
-    cd Build do
-      mv Dir['rubyinstaller-*'].first, Bitferry
-    end
+    mkdir_p Runtime
+    File.rename Dir["#{Build}/rubyinstaller-*"].first, Runtime
   end
   task :configure => :normalize do
     cd "#{Runtime}/bin" do
@@ -140,7 +139,9 @@ task :runtime => ['ruby:ruby', 'restic:extract', 'rclone:extract'] do
   dir = "#{site}/bitferry"
   mkdir_p dir
   cp 'windows.rb', dir
-  cp 'bitferry.cmd', Runtime
+  bin = "#{Build}/bitferry/bin"
+  mkdir_p bin
+  cp 'bitferry.cmd', bin
   mv Dir["#{Build}/restic*.exe"].first, "#{Runtime}/bin/restic.exe"
   mv Dir["#{Build}/rclone*/rclone.exe"].first, "#{Runtime}/bin"; rm_rf Dir["#{Build}/rclone*"]
 end

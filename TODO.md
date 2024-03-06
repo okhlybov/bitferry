@@ -2,3 +2,4 @@
 - Rclone remote endpoints
 - Exclude specific tasks from auto processing
 - Tasks ordering/dependencies
+- Windows bundle per-user install

@@ -40,5 +40,5 @@ Name: "syspath"; Description: "Include Bitferry command in system wide PATH"
 
 procedure RegisterPaths;
 begin
-  if WizardIsTaskSelected('syspath') then RegisterPath('{app}', SystemPath, Prepend);
+  if WizardIsTaskSelected('syspath') then RegisterPath('{app}\bin', SystemPath, Prepend);
 end;
