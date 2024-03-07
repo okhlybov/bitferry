@@ -24,6 +24,8 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 ChangesEnvironment=yes
+PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=dialog
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -31,8 +33,11 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Files]
 Source: "build\bitferry\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs setntfscompression
 
+[Icons]
+Name: "{group}\{#MyAppName} README"; Filename: "{app}\README.html"
+
 [Tasks]
-Name: "syspath"; Description: "Include Bitferry command in system wide PATH"
+Name: "path"; Description: "Include Bitferry command in PATH"
 
 [Code]
 
@@ -40,5 +45,6 @@ Name: "syspath"; Description: "Include Bitferry command in system wide PATH"
 
 procedure RegisterPaths;
 begin
-  if WizardIsTaskSelected('syspath') then RegisterPath('{app}\bin', SystemPath, Prepend);
+  if WizardIsTaskSelected('path') and IsAdminInstallMode then RegisterPath('{app}\bin', SystemPath, Prepend);
+  if WizardIsTaskSelected('path') and not IsAdminInstallMode then RegisterPath('{app}\bin', UserPath, Prepend);
 end;

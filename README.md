@@ -46,25 +46,25 @@ In addition, the platform-specific [Rclone](https://github.com/rclone/rclone/rel
 
 ## Kickstart
 
-Install Bitferry
+### Install Bitferry
 
 ```shell
 gem install bitferry
 ```
 
-Prepare source Bitferry volume for a mounted local filesystem
+### Prepare source Bitferry volume for a mounted local filesystem
 
 ```shell
 bitferry create volume /data
 ```
 
-Prepare destination Bitferry volume for a mounted portable storage
+### Prepare destination Bitferry volume for a mounted portable storage
 
 ```shell
 bitferry create volume /mnt/usb-drive
 ```
 
-Ensure the volumes are intact
+### Ensure the volumes are intact
 
 ```shell
 bitferry show
@@ -77,13 +77,13 @@ bitferry show
   e42f2d8c    /mnt/usb-drive
 ```
 
-Create a (Rclone) sync task with data encryption
+### Create a (Rclone) sync task with data encryption
 
 ```shell
 bitferry create task sync -e /data /mnt/usb-drive/backup
 ```
 
-Review the changes
+### Review the changes
 
 ```shell
 bitferry
@@ -101,7 +101,7 @@ bitferry
   89e1c119    encrypt+synchronize :d2f10024: --> :e42f2d8c:backup
 ```
 
-Perform a dry run of the specific task
+### Perform a dry run of the specific task
 
 ```shell
 bitferry process -vn 89e
@@ -126,7 +126,7 @@ Elapsed time:         0.0s
 
 </details>
 
-Process all intact tasks in sequence
+### Process all intact tasks in sequence
 
 ```shell
 bitferry -v x
@@ -151,7 +151,7 @@ Elapsed time:         0.0s
 
 </details>
 
-Observe the result
+### Observe the result
 
 ```shell
 ls -l /mnt/usb-drive/backup
@@ -168,7 +168,7 @@ ls -l /mnt/usb-drive/backup
 
 </details>
 
-Examine the detailed usage instructions
+### Examine the detailed usage instructions
 
 ```shell
 bitferry c t s -h

@@ -142,6 +142,9 @@ task :runtime => ['ruby:ruby', 'restic:extract', 'rclone:extract'] do
   bin = "#{Build}/bitferry/bin"
   mkdir_p bin
   cp 'bitferry.cmd', bin
+  sh "erb bitferry=#{Version} rclone=#{Rclone.version} restic=#{Restic.version} README.txt.erb > README.txt"
+  require 'commonmarker'
+  File.write("#{Build}/bitferry/README.html", Commonmarker.to_html(File.read('../README.md'), plugins: { syntax_highlighter: { theme: "InspiredGitHub" } }))
   mv Dir["#{Build}/restic*.exe"].first, "#{Runtime}/bin/restic.exe"
   mv Dir["#{Build}/rclone*/rclone.exe"].first, "#{Runtime}/bin"; rm_rf Dir["#{Build}/rclone*"]
 end
@@ -154,7 +157,6 @@ end
 
 task :installer => :runtime do
   sh "erb bitferry=#{Version} release=#{Release} bitferry.iss.erb > bitferry.iss"
-  sh "erb bitferry=#{Version} rclone=#{Rclone.version} restic=#{Restic.version} README.txt.erb > README.txt"
   start 'iss.cmd'
 end
 

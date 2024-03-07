@@ -19,6 +19,7 @@ Gem::Specification.new do |s|
   s.add_development_dependency('rake', '~> 13.0')
   #s.add_development_dependency('rdoc', '~> 6.6')
   s.add_development_dependency('down', '~> 5.0')
+  s.add_development_dependency('commonmarker', '~> 1.0')
   s.add_runtime_dependency('neatjson','~> 0.10')
   s.add_runtime_dependency('clamp','~> 1.3')
 end
