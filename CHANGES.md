@@ -1,7 +1,7 @@
-##
+## 0.0.3
 
 - Windows bundle
-
+- Doc fixes
 
 ## 0.0.2
 
