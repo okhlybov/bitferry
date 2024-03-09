@@ -1077,7 +1077,7 @@ module Bitferry
 
 
       FORGET = {
-        default: ['--prune', '--keep-within-hourly', '24h', '--keep-within-daily', '7d', '--keep-within-weekly', '30d', '--keep-within-monthly', '1y', '--keep-within-yearly', '100y']
+        default: ['--prune', '--no-cache', '--keep-within-hourly', '24h', '--keep-within-daily', '7d', '--keep-within-weekly', '30d', '--keep-within-monthly', '1y', '--keep-within-yearly', '100y']
       }
       FORGET[nil] = nil # Skip processing retention policy by default
 
