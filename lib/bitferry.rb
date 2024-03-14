@@ -12,7 +12,7 @@ require 'shellwords'
 module Bitferry
 
 
-  VERSION = '0.0.3'
+  VERSION = '0.0.4'
 
 
   module Logging
@@ -1326,7 +1326,7 @@ module Bitferry
 
       def restore(hash)
         @volume_tag = hash.fetch(:volume)
-        @path = Pathname.new(hash.fetch(:path))
+        @path = Pathname.new(hash.fetch(:path, ''))
       end
 
 
@@ -1334,8 +1334,8 @@ module Bitferry
         {
           endpoint: :bitferry,
           volume: volume_tag,
-          path: path
-        }
+          path: path.to_s.empty? ? nil : path
+        }.compact
       end
 
 
