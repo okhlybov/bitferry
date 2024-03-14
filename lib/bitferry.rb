@@ -533,7 +533,7 @@ module Bitferry
     def initialize(tag: Bitferry.tag, modified: DateTime.now)
       @tag = tag
       @generation = 0
-      @modified = modified
+      @modified = modified.is_a?(DateTime) ? modified : DateTime.parse(modified)
       # FIXME handle process_options at this level
     end
 
@@ -609,8 +609,16 @@ module Bitferry
     def self.reset = @@registry = {}
 
 
-    def self.register(task) = @@registry[task.tag] = task # TODO settle on task with the latest timestamp
-
+    def self.register(task)
+      # Task with newer timestamp replaces already registered task, if any
+      if (xtag = @@registry[task.tag]).nil?
+        @@registry[task.tag] = task
+      elsif xtag.modified < task.modified
+        @@registry[task.tag] = task
+      else
+        xtag
+      end
+    end
 
     def self.intact = live.filter { |task| task.intact? }
 
