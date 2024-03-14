@@ -854,7 +854,7 @@ module Bitferry
         puts cms if Bitferry.verbosity == :verbose
         log.info(cms)
         status = Open3.pipeline(cmd).first
-        raise "rclone exit code #{status.exitstatus}" unless status.success?
+        raise RuntimeError, "rclone exit code #{status.exitstatus}" unless status.success?
         status.success?
       end
 
@@ -1045,7 +1045,8 @@ module Bitferry
           begin
             Dir.chdir(chdir) unless chdir.nil?
             status = Open3.pipeline(cmd).first
-            raise "restic exit code #{status.exitstatus}" unless status.success?
+            raise RuntimeError, "restic exit code #{status.exitstatus}" unless status.success?
+            status.success?
           ensure
             Dir.chdir(wd) unless chdir.nil?
           end
