@@ -33,7 +33,7 @@ def setup_rclone_task(x)
     $encryption = Bitferry::Rclone::Decrypt
     $profile = :default
   end
-  x.option '-x', :flag, 'Use extended encryption profile options (applies to -e, -d)', attribute_name: :x do
+  x.option '-u', :flag, 'Apply extended (unicode) encryption profile options (alias for -E extended / -D extended)', attribute_name: :u do
     $extended = true
   end
   x.option ['--process', '-X'], 'OPTIONS', 'Extra task processing profile/options' do |opts|
@@ -251,11 +251,11 @@ Clamp do
         }
         option '--force', :flag, 'Force overwriting existing repository' do $format = true end
         option ['--attach', '-a'], :flag, 'Attach to existing repository' do $format = false end
-        option '-f', :flag, 'Rig for application of the snapshot retention policy (alias for -F default)', attribute_name: :f do $forget = :default end
-        option '-c', :flag, 'Rig for repository checking (alias for -C default)', attribute_name: :c do $check = :default end
+        option '-f', :flag, 'Apply default snapshot retention policy options (alias for -F default)', attribute_name: :f do $forget = :default end
+        option '-c', :flag, 'Apply default repository checking options (alias for -C default)', attribute_name: :c do $check = :default end
         option ['--process', '-X'], 'OPTIONS', 'Extra task processing profile/options' do |opts| $process = opts end
-        option ['--forget', '-F'], 'OPTIONS', 'Rig for snapshot retention policy with profile/options' do |opts| $forget = opts end
-        option ['--check', '-C'], 'OPTIONS', 'Rig for repository checking with profile/options' do |opts| $check = opts end
+        option ['--forget', '-F'], 'OPTIONS', 'Snapshot retention policy with profile/options' do |opts| $forget = opts end
+        option ['--check', '-C'], 'OPTIONS', 'Repository checking with profile/options' do |opts| $check = opts end
         parameter 'SOURCE', 'Source endpoint specifier'
         parameter 'REPOSITORY', 'Destination repository endpoint specifier'
         def execute
