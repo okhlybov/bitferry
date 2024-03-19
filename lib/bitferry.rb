@@ -498,6 +498,9 @@ module Bitferry
     attr_reader :modified
 
 
+    attr_reader :include, :exclude
+
+
     def process_options = @process_options.nil? ? [] : @process_options # As a mandatory option it should never be nil
 
 
@@ -530,9 +533,11 @@ module Bitferry
     end
 
 
-    def initialize(tag: Bitferry.tag, modified: DateTime.now)
+    def initialize(tag: Bitferry.tag, modified: DateTime.now, include: [], exclude: [])
       @tag = tag
       @generation = 0
+      @include = include
+      @exclude = exclude
       @modified = modified.is_a?(DateTime) ? modified : DateTime.parse(modified)
       # FIXME handle process_options at this level
     end
@@ -546,6 +551,8 @@ module Bitferry
 
 
     def restore(hash)
+      @include = hash.fetch(:include, [])
+      @exclude = hash.fetch(:exclude, [])
       @state = :intact
       log.info("restored task #{tag}")
     end
@@ -558,7 +565,9 @@ module Bitferry
     def externalize
       {
         task: tag,
-        modified: @modified
+        modified: modified,
+        include: include.empty? ? nil : include,
+        exclude: exclude.empty? ? nil : exclude
       }.compact
     end
 
@@ -581,6 +590,14 @@ module Bitferry
       when :pristine then format
       when :removing then @state = nil
       end
+    end
+
+
+    def show_filters
+      xs = []
+      xs << 'include: ' + include.join(',') unless include.empty?
+      xs << 'exclude: ' + exclude.join(',') unless exclude.empty?
+      xs.join(' ').to_s
     end
 
 
@@ -803,7 +820,7 @@ module Bitferry
       end
 
 
-      def show_status = "#{show_operation} #{source.show_status} #{show_direction} #{destination.show_status}"
+      def show_status = "#{show_operation} #{source.show_status} #{show_direction} #{destination.show_status} #{show_filters}"
 
 
       def show_operation = encryption.nil? ? '' : encryption.show_operation
@@ -841,8 +858,14 @@ module Bitferry
       end
 
 
+      def include_filters = include.collect { |x| ['--filter', "+ #{x}"]}.flatten
+
+        
+      def exclude_filters = ([Volume::STORAGE, Volume::STORAGE_] + exclude).collect { |x| ['--filter', "- #{x}"]}.flatten
+
+
       def process_arguments
-        ['--filter', "- #{Volume::STORAGE}", '--filter', "- #{Volume::STORAGE_}"] + common_options + process_options + (
+        include_filters + exclude_filters + common_options + process_options + (
           encryption.nil? ? [source.root.to_s, destination.root.to_s] : encryption.arguments(self)
         )
       end
@@ -1019,6 +1042,9 @@ module Bitferry
       def format = nil
 
 
+      def include_filters = include.collect { |x| ['--include', x]}.flatten
+
+      
       def common_options
         [
           case Bitferry.verbosity
@@ -1111,7 +1137,10 @@ module Bitferry
       end
 
 
-      def show_status = "#{show_operation} #{directory.show_status} #{show_direction} #{repository.show_status}"
+      def exclude_filters = ([Volume::STORAGE, Volume::STORAGE_] + exclude).collect { |x| ['--exclude', x]}.flatten
+  
+  
+      def show_status = "#{show_operation} #{directory.show_status} #{show_direction} #{repository.show_status} #{show_filters}"
 
 
       def show_operation = 'encrypt+backup'
@@ -1123,7 +1152,7 @@ module Bitferry
       def process
         begin
           log.info("processing task #{tag}")
-          execute('backup', '.', '--tag', "bitferry,#{tag}", '--exclude', Volume::STORAGE, '--exclude', Volume::STORAGE_, *process_options, *common_options_simulate, chdir: directory.root)
+          execute('backup', '.', '--tag', "bitferry,#{tag}", *exclude_filters, *process_options, *common_options_simulate, chdir: directory.root)
           unless check_options.nil?
             log.info("checking repository in #{repository.root}")
             execute('check', *check_options, *common_options)
@@ -1208,7 +1237,10 @@ module Bitferry
       end
 
 
-      def show_status = "#{show_operation} #{repository.show_status} #{show_direction} #{directory.show_status}"
+      def exclude_filters = exclude.collect { |x| ['--exclude', x]}.flatten
+  
+  
+      def show_status = "#{show_operation} #{repository.show_status} #{show_direction} #{directory.show_status} #{show_filters}"
 
 
       def show_operation = 'decrypt+restore'
@@ -1239,7 +1271,7 @@ module Bitferry
         log.info("processing task #{tag}")
         begin
           # FIXME restore specifically tagged latest snapshot
-          execute('restore', 'latest', '--target', '.', *process_options, *common_options, simulate: Bitferry.simulate?, chdir: directory.root)
+          execute('restore', 'latest', '--target', '.', *include_filters, *exclude_filters, *process_options, *common_options, simulate: Bitferry.simulate?, chdir: directory.root)
           true
         rescue
           false

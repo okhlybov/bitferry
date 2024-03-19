@@ -22,6 +22,38 @@ Encryption = %{
 }
 
 
+$process = nil
+$encryption = nil
+$include = []
+$exclude = []
+
+
+def ext_globs(exts)
+  xs = exts.split(',')
+  if xs.size > 1
+    '*.{' + xs.join(',') + '}'
+  else
+    '*.' + exts
+  end
+end
+
+
+def setup_task(x, include: true)
+  x.option ['-i'], 'EXTS', 'Include file extensions (comma-separated list)', multivalued: true, attribute_name: :include_exts do |exts|
+    $include << ext_globs(exts)
+  end if include
+  x.option ['-x'], 'EXTS', 'Exclude file extensions (comma-separated list)', multivalued: true, attribute_name: :exclude_exts do |exts|
+    $exclude << ext_globs(exts)
+  end
+  x.option ['--include'], 'GLOBS', 'Include path specifications (comma-separated list)', multivalued: true, attribute_name: :include do |globs|
+    $include << globs.split(',')
+  end if include
+  x.option ['--exclude'], 'GLOBS', 'Exclude path specifications (comma-separated list)', multivalued: true, attribute_name: :exclude do |globs|
+    $exclude << globs.split(',')
+  end
+end
+
+
 def setup_rclone_task(x)
   x.parameter 'SOURCE', 'Source endpoint specifier'
   x.parameter 'DESTINATION', 'Destination endpoint specifier'
@@ -47,6 +79,7 @@ def setup_rclone_task(x)
     $encryption = Bitferry::Rclone::Decrypt
     $profile = opts
   end
+  setup_task(x)
 end
 
 
@@ -54,6 +87,7 @@ def create_rclone_task(task, *args, **opts)
   task.new(*args,
     process: $process,
     encryption: $encryption&.new(obtain_password, process: $extended ? :extended : $profile),
+    include: $include.flatten.uniq, exclude: $exclude.flatten.uniq,
     **opts
   )
 end
@@ -258,6 +292,7 @@ Clamp do
         option ['--check', '-C'], 'OPTIONS', 'Repository checking with profile/options' do |opts| $check = opts end
         parameter 'SOURCE', 'Source endpoint specifier'
         parameter 'REPOSITORY', 'Destination repository endpoint specifier'
+        setup_task(self, include: false)
         def execute
           bitferry {
             Bitferry::Restic::Backup.new(
@@ -265,7 +300,8 @@ Clamp do
               format: $format,
               process: $process,
               check: $check,
-              forget: $forget
+              forget: $forget,
+              exclude: $exclude.flatten.uniq
             )
           }
         end
@@ -280,11 +316,13 @@ Clamp do
         option ['--process', '-X'], 'OPTIONS', 'Extra task processing profile/options' do |opts| $process = opts end
         parameter 'REPOSITORY', 'Source repository endpoint specifier'
         parameter 'DESTINATION', 'Destination endpoint specifier'
+        setup_task(self)
         def execute
           bitferry {
             Bitferry::Restic::Restore.new(
               destination, repository, obtain_password,
               process: $process,
+              include: $include.flatten.uniq, exclude: $exclude.flatten.uniq
             )
           }
         end
