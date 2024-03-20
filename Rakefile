@@ -181,7 +181,9 @@ namespace :windows do
   end
 
   task :installer => :runtime do
-    sh "erb bitferry=#{Windows::Version} release=#{Windows::Release} windows/bitferry.iss.erb > bitferry.iss"
+    cd 'windows' do
+      sh "erb bitferry=#{Windows::Version} release=#{Windows::Release} bitferry.iss.erb > bitferry.iss"
+    end
     cd 'windows' do Windows.start 'iss.cmd' end
   end
 
