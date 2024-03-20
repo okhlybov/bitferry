@@ -1,6 +1,7 @@
 ## 0.0.4
 
-- Include/exclude filters
+- Include/exclude path filters
+- Include user's home in the Bitferry volume lookup list
 
 ## 0.0.3
 

@@ -39,7 +39,7 @@ module Bitferry
     reset
     log.info('restoring volumes')
     result = true
-    roots = (environment_mounts + system_mounts).uniq
+    roots = (environment_mounts + system_mounts + [Dir.home]).uniq
     log.info("distilled volume search path: #{roots.join(', ')}")
     roots.each do |root|
       if File.exist?(File.join(root, Volume::STORAGE))
