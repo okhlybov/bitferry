@@ -6,7 +6,7 @@ The [Bitferry](https://github.com/okhlybov/bitferry) is aimed at establishing th
 
 The intended usage ranges from maintaining simple directory copy to another location (disk, mount point) to complex many-to-many (online/offline) data replication/backup solution employing portable media as additional data storage and a means of data propagation between the offsites.
 
-The core idea that drives Bitferry is the conversion of full (absolute) endpoint's paths into the volume-relative ones, where the volume is a data file which is put along the endpoint's data and denotes the root of the directory hierarchy. This leads to the important location independence property meaning that Bitferry is then able to restore the tasks' source-destination endpoint connections in spite of the volume location changes, which is a likely scenario in case of portable storage (different UNIX mount points, Windows drives etc.).
+The core idea that drives Bitferry is the conversion of full (absolute) endpoints' paths into the volume-relative ones, where the volume is a data file which is put along the endpoint's data and denotes the root of the directory hierarchy. This makes data position-independent which means that Bitferry is then able to restore the tasks' source-destination endpoint connections in spite of the volume location changes, which is a likely scenario in case of portable storage (different UNIX mount points, Windows drives etc.).
 
 Bitferry is effectively a frontend to the [Rclone](https://rclone.org) and [Restic](https://restic.net) utilities.
 
