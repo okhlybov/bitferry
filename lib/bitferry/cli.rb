@@ -28,14 +28,7 @@ $include = []
 $exclude = []
 
 
-def ext_globs(exts)
-  xs = exts.split(',')
-  if xs.size > 1
-    '*.{' + xs.join(',') + '}'
-  else
-    '*.' + exts
-  end
-end
+def ext_globs(exts) = exts.split(',').collect { |ext| "*.#{ext}" }
 
 
 def setup_task(x, include: true)
