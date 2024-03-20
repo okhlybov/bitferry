@@ -211,7 +211,7 @@ Parameters:
 Options:
     -e                       Encrypt files in destination using default profile (alias for -E default)
     -d                       Decrypt source files using default profile (alias for -D default)
-    -x                       Use extended encryption profile options (applies to -e, -d)
+    -u                       Use extended encryption profile options (applies to -e, -d)
     --process, -X OPTIONS    Extra task processing profile/options
     --encrypt, -E OPTIONS    Encrypt files in destination using specified profile/options
     --decrypt, -D OPTIONS    Decrypt source files using specified profile/options
