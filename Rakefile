@@ -80,10 +80,10 @@ module Windows
   )
 
   Rclone = Source.new(
-    version: '1.65.2',
+    version: '1.66.0',
     arch: 'windows-386',
     url: 'https://downloads.rclone.org/v#{version}/rclone-v#{version}-#{arch}.zip',
-    sha256: '2261b96a6bd64788c498d0cd1e6a327f169a0092972dd3bbbb2ff2251ab78252'
+    sha256: 'ca647f69c6bf2e831902a8bd9c5f4d16f7014314d5eeb94bd3a5389a92806de8'
   )
 
   Restic = Source.new(
@@ -132,7 +132,7 @@ namespace :windows do
         rm_rf Dir['bin/ridk*', 'lib/*.a', 'lib/pkgconfig', 'lib/ruby/gems/*/cache/*', 'lib/ruby/gems/*/doc/*']
       end
     end
-    task :ruby => :fxruby # Enable to include FXRuby in release
+    #task :ruby => :fxruby # Enable to include FXRuby in release
     task :fxruby => :normalize do
       cd "#{Windows::Runtime}/bin" do
         Windows.start 'gem install fxruby'
@@ -165,7 +165,9 @@ namespace :windows do
     bin = "#{Windows::Build}/bitferry/bin"
     mkdir_p bin
     cp 'windows/bitferry.cmd', bin
-    sh "erb bitferry=#{Windows::Version} rclone=#{Windows::Rclone.version} restic=#{Windows::Restic.version} windows/README.txt.erb > README.txt"
+    cd 'windows' do
+      sh "erb bitferry=#{Windows::Version} rclone=#{Windows::Rclone.version} restic=#{Windows::Restic.version} README.txt.erb > README.txt"
+    end
     require 'commonmarker'
     File.write("#{Windows::Build}/bitferry/README.html", Commonmarker.to_html(File.read('README.md'), plugins: { syntax_highlighter: { theme: "InspiredGitHub" } }))
     mv Dir["#{Windows::Build}/restic*.exe"].first, "#{Windows::Runtime}/bin/restic.exe"

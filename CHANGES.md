@@ -1,3 +1,7 @@
+## 0.0.4
+
+- Include/exclude filters
+
 ## 0.0.3
 
 - Windows bundle
