@@ -1271,7 +1271,7 @@ module Bitferry
         log.info("processing task #{tag}")
         begin
           # FIXME restore specifically tagged latest snapshot
-          execute('restore', 'latest', '--target', '.', *include_filters, *exclude_filters, *process_options, *common_options, simulate: Bitferry.simulate?, chdir: directory.root)
+          execute('restore', 'latest', '--target', directory.root.to_s, *include_filters, *exclude_filters, *process_options, *common_options, simulate: Bitferry.simulate?)
           true
         rescue
           false
