@@ -100,7 +100,7 @@ module Windows
       Rake.sh cmd
     end
   end
-  
+
 end
 
 require 'rake/clean'
@@ -183,8 +183,8 @@ namespace :windows do
   task :installer => :runtime do
     cd 'windows' do
       sh "erb bitferry=#{Windows::Version} release=#{Windows::Release} bitferry.iss.erb > bitferry.iss"
+      Windows.start 'iss.cmd'
     end
-    cd 'windows' do Windows.start 'iss.cmd' end
   end
 
 end
