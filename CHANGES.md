@@ -1,3 +1,5 @@
+- Disable cache usage in Restic check profiles
+
 ## 0.0.4
 
 - Include/exclude path filters

@@ -860,7 +860,7 @@ module Bitferry
 
       def include_filters = include.collect { |x| ['--filter', "+ #{x}"]}.flatten
 
-        
+
       def exclude_filters = ([Volume::STORAGE, Volume::STORAGE_] + exclude).collect { |x| ['--filter', "- #{x}"]}.flatten
 
 
@@ -1044,7 +1044,7 @@ module Bitferry
 
       def include_filters = include.collect { |x| ['--include', x]}.flatten
 
-      
+
       def common_options
         [
           case Bitferry.verbosity
@@ -1118,8 +1118,8 @@ module Bitferry
 
 
       CHECK = {
-        default: [],
-        full: ['--read-data']
+        default: ['--no-cache'],
+        full: ['--no-cache', '--read-data']
       }
       CHECK[nil] = nil # Skip integrity checking by default
 
@@ -1138,8 +1138,8 @@ module Bitferry
 
 
       def exclude_filters = ([Volume::STORAGE, Volume::STORAGE_] + exclude).collect { |x| ['--exclude', x]}.flatten
-  
-  
+
+
       def show_status = "#{show_operation} #{directory.show_status} #{show_direction} #{repository.show_status} #{show_filters}"
 
 
@@ -1238,8 +1238,8 @@ module Bitferry
 
 
       def exclude_filters = exclude.collect { |x| ['--exclude', x]}.flatten
-  
-  
+
+
       def show_status = "#{show_operation} #{repository.show_status} #{show_direction} #{directory.show_status} #{show_filters}"
 
 
