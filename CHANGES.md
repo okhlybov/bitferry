@@ -1,4 +1,5 @@
 - Disable cache usage in Restic check profiles
+- Fix an options profile application bug
 
 ## 0.0.4
 

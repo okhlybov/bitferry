@@ -477,7 +477,7 @@ module Bitferry
     when Array then option # Array is passed verbatim
     when '-' then nil # Disable adding any options with -
     when /^-/ then option.split(',') # Split comma-separated string into array --foo,bar --> [--foo, bar]
-    else route.fetch(option) # Obtain array from the database
+    else route.fetch(option.nil? ? nil : option.to_sym) # Obtain options from the profile database
     end
   end
 
