@@ -158,7 +158,7 @@ Clamp do
           puts "  #{task.tag}    #{task.show_status}"
         end
       end
-      unless (xs = Bitferry::Task.stale).empty?
+      if !(xs = Bitferry::Task.stale).empty? && Bitferry.verbosity == :verbose
         puts
         puts '# Stale tasks'
         puts
