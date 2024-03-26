@@ -341,12 +341,10 @@ module Bitferry
 
     def self.endpoint(root)
       path = Pathname.new(root).realdirpath
-      # FIXME select innermost or outermost volume in case of nested volumes?
-      intact.sort { |v1, v2| v2.root.size <=> v1.root.size }.each do |volume|
+      intact.sort { |v1, v2| v2.root.to_s.size <=> v1.root.to_s.size }.each do |volume|
         begin
-          # FIXME chop trailing slashes
-          stem = path.relative_path_from(volume.root)
-          case stem.to_s
+          stem = path.relative_path_from(volume.root).to_s #.chomp('/')
+          case stem
             when '.' then return volume.endpoint
             when /^[^\.].*/ then return volume.endpoint(stem)
           end
