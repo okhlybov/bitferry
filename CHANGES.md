@@ -1,3 +1,5 @@
+## 0.0.5
+
 - Disable cache usage in Restic check profiles
 - Show stale tasks in verbose mode only
 - Pick the innermost Bitferry volume in case of volumes nesting
