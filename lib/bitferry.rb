@@ -85,9 +85,11 @@ module Bitferry
   end
 
 
-  def self.process(*tags)
+  def self.intact_tasks = Volume.intact.collect { |volume| volume.intact_tasks }.flatten.uniq
+
+  def self.process(*tags, &block)
     log.info('processing tasks')
-    tasks = Volume.intact.collect { |volume| volume.intact_tasks }.flatten.uniq
+    tasks = intact_tasks
     if tags.empty?
       process = tasks
     else
@@ -102,7 +104,17 @@ module Bitferry
         end
       end
     end
-    result = process.uniq.all? { |task| task.process }
+    tasks = process.uniq
+    total = tasks.size
+    processed = 0
+    failed = 0
+    result = tasks.all? do |task|
+      r = task.process
+      processed += 1
+      failed += 1 unless r
+      yield(total, processed, failed) if block_given?
+      r
+    end
     result ? log.info('tasks processed') : log.warn('task process failure(s) reported')
     result
   end

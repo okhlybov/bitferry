@@ -1,3 +1,5 @@
+- Rudimentary GUI employing FXRuby
+
 ## 0.0.5
 
 - Disable cache usage in Restic check profiles
