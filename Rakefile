@@ -125,14 +125,15 @@ namespace :windows do
     end
     task :ruby => :normalize do
       cd "#{Windows::Runtime}/bin" do
-        Windows.start "gem install bitferry --version #{Windows::Version}"
+        #Windows.start "gem install bitferry --version #{Windows::Version}"
+        Windows.start "gem install ../../../../../bitferry-#{Windows::Version}.gem"
       end
       cd Windows::Runtime do
         rm_rf Dir['include', 'share', 'packages', 'ridk_use', 'LICENSE*']
         rm_rf Dir['bin/ridk*', 'lib/*.a', 'lib/pkgconfig', 'lib/ruby/gems/*/cache/*', 'lib/ruby/gems/*/doc/*']
       end
     end
-    #task :ruby => :fxruby # Enable to include FXRuby in release
+    task :ruby => :fxruby # Enable to include FXRuby in release
     task :fxruby => :normalize do
       cd "#{Windows::Runtime}/bin" do
         Windows.start 'gem install fxruby'

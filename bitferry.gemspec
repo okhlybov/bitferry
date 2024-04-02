@@ -15,7 +15,7 @@ Gem::Specification.new do |s|
   #s.extra_rdoc_files = ['README.rdoc','bitferry.rdoc']
   #s.rdoc_options << '--title' << 'bitferry' << '--main' << 'README.rdoc' << '-ri'
   s.bindir = 'bin'
-  s.executables << 'bitferry'
+  s.executables = ['bitferry', 'bitferryfx']
   s.add_development_dependency('rake', '~> 13.0')
   #s.add_development_dependency('rdoc', '~> 6.6')
   s.add_development_dependency('down', '~> 5.0')

@@ -30,7 +30,6 @@ class UI < FXMainWindow
   end
 
   def reset
-    #@progress.setBarColor(:darkGreen)
     @progress.progress = 0
     Bitferry.restore
   end

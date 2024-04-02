@@ -1,3 +1,5 @@
+## 0.0.6
+
 - Rudimentary GUI employing FXRuby
 
 ## 0.0.5
