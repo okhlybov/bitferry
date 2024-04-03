@@ -1,0 +1,1 @@
+@call "%~dp0../runtime/bin/rubyw.exe" -r bitferry/windows "%~dp0../runtime/bin/bitferryfx" %*

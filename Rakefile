@@ -166,6 +166,7 @@ namespace :windows do
     bin = "#{Windows::Build}/bitferry/bin"
     mkdir_p bin
     cp 'windows/bitferry.cmd', bin
+    cp 'windows/bitferryfx.cmd', bin
     cd 'windows' do
       sh "erb bitferry=#{Windows::Version} rclone=#{Windows::Rclone.version} restic=#{Windows::Restic.version} README.txt.erb > README.txt"
     end
