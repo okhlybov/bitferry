@@ -1,3 +1,7 @@
+## 0.0.7
+
+- Fix backend execution issues in GUI
+
 ## 0.0.6
 
 - Rudimentary GUI employing FXRuby
