@@ -57,6 +57,7 @@ end
 
 FXApp.new do |app|
   Bitferry.verbosity = :verbose
+  Bitferry.ui = :gui
   UI.new(app)
   app.create
   app.run

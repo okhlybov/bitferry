@@ -149,6 +149,11 @@ module Bitferry
   def self.verbosity=(mode) @verbosity = mode end
 
 
+  @ui = :cli
+  def self.ui = @ui
+  def self.ui=(ui) @ui = ui end
+
+
   # Return true if run in the real Windows environment (e.g. not in real *NIX or various emulation layers such as MSYS, Cygwin etc.)
   def self.windows?
     @windows ||= /^(mingw)/.match?(RbConfig::CONFIG['target_os']) # RubyInstaller's MRI, other MinGW-build MRI
@@ -671,7 +676,7 @@ module Bitferry
       log.debug(cmd.collect(&:shellescape).join(' '))
       stdout, status = Open3.capture2(*cmd)
       unless status.success?
-        msg = "rclone exit code #{status.to_i}"
+        msg = "rclone exit code #{status.exitstatus}"
         log.error(msg)
         raise RuntimeError, msg
       end
@@ -862,7 +867,7 @@ module Bitferry
             when :quiet then '--quiet'
             else nil
           end,
-          Bitferry.verbosity == :verbose ? '--progress' : nil,
+          Bitferry.verbosity == :verbose && Bitferry.ui == :cli ? '--progress' : nil,
           Bitferry.simulate? ? '--dry-run' : nil,
         ].compact
       end
