@@ -886,7 +886,8 @@ module Bitferry
         cms = cmd.collect(&:shellescape).join(' ')
         puts cms if Bitferry.verbosity == :verbose
         log.info(cms)
-        status = Open3.pipeline(cmd).first
+        oe, status = Open3.capture2e(*cmd)
+        puts oe
         raise RuntimeError, "rclone exit code #{status.exitstatus}" unless status.success?
         status.success?
       end
@@ -1080,7 +1081,8 @@ module Bitferry
           wd = Dir.getwd unless chdir.nil?
           begin
             Dir.chdir(chdir) unless chdir.nil?
-            status = Open3.pipeline(cmd).first
+            oe, status = Open3.capture2e(*cmd)
+            puts oe
             raise RuntimeError, "restic exit code #{status.exitstatus}" unless status.success?
             status.success?
           ensure
