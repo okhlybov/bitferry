@@ -1076,6 +1076,7 @@ module Bitferry
       def execute(*args, simulate: false, chdir: nil)
         cmd = [Restic.executable] + args
         ENV['RESTIC_PASSWORD'] = password
+        ENV['RESTIC_PROGRESS_FPS'] = 1.to_s if Bitferry.verbosity == :verbose && Bitferry.ui == :gui
         cms = cmd.collect(&:shellescape).join(' ')
         puts cms if Bitferry.verbosity == :verbose
         log.info(cms)
