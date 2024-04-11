@@ -110,7 +110,7 @@ def obtain_password
 end
 
 
-Bitferri.ui = :cli
+Bitferry.ui = :cli
 Bitferry.log.level = Logger::DEBUG if $DEBUG
 
 
