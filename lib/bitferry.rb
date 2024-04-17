@@ -24,6 +24,7 @@ module Bitferry
       end
       @log
     end
+    def self.log=(log) @log = log end
     def log = Logging.log
   end
 

@@ -6,15 +6,14 @@ require 'bitferry'
 include Fox
 
 
-class Output
+class Output < StringIO
 
   def initialize(app, output)
+    super('rw+')
     @app = app
     @output = output
     @output.text = nil
   end
-
-  def puts(str) = write(str, "\n")
 
   def write(*args) = @app.runOnUiThread { @output.appendText(args.join) }
 
@@ -76,6 +75,9 @@ class UI < FXMainWindow
     Bitferry.restore
     @progress.progress = 0
     $stdout = Output.new(@app, @output)
+    Bitferry::Logging.log = log = Logger.new($stdout)
+    log.progname = :bitferryfx
+    log.level = Logger::WARN
   end
 
   def create
