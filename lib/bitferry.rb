@@ -889,10 +889,10 @@ module Bitferry
       def execute(*args)
         cmd = [Rclone.executable] + args
         cms = cmd.collect(&:shellescape).join(' ')
-        puts cms if Bitferry.verbosity == :verbose
+        $stdout.puts cms if Bitferry.verbosity == :verbose
         log.info(cms)
         oe, status = Open3.capture2e(*cmd)
-        puts oe
+        $stdout.puts oe
         raise RuntimeError, "rclone exit code #{status.exitstatus}" unless status.success?
         status.success?
       end
@@ -1078,7 +1078,7 @@ module Bitferry
         ENV['RESTIC_PASSWORD'] = password
         ENV['RESTIC_PROGRESS_FPS'] = 1.to_s if Bitferry.verbosity == :verbose && Bitferry.ui == :gui
         cms = cmd.collect(&:shellescape).join(' ')
-        puts cms if Bitferry.verbosity == :verbose
+        $stdout.puts cms if Bitferry.verbosity == :verbose
         log.info(cms)
         if simulate
           log.info('(simulated)')
@@ -1088,7 +1088,7 @@ module Bitferry
           begin
             Dir.chdir(chdir) unless chdir.nil?
             oe, status = Open3.capture2e(*cmd)
-            puts oe
+            $stdout.puts oe
             raise RuntimeError, "restic exit code #{status.exitstatus}" unless status.success?
             status.success?
           ensure

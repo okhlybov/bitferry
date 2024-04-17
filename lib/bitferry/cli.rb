@@ -121,7 +121,7 @@ Clamp do
 
 
   option '--version', :flag, 'Print version' do
-    puts Bitferry::VERSION
+    $stdout.puts Bitferry::VERSION
     exit
   end
 
@@ -145,26 +145,26 @@ Clamp do
     def execute
       Bitferry.restore
       unless (xs = Bitferry::Volume.intact).empty?
-        puts '# Intact volumes'
-        puts
+        $stdout.puts '# Intact volumes'
+        $stdout.puts
         xs.each do |volume|
-          puts "  #{volume.tag}    #{volume.root}"
+          $stdout.puts "  #{volume.tag}    #{volume.root}"
         end
       end
       unless (xs = Bitferry::Task.intact).empty?
-        puts
-        puts '# Intact tasks'
-        puts
+        $stdout.puts
+        $stdout.puts '# Intact tasks'
+        $stdout.puts
         xs.each do |task|
-          puts "  #{task.tag}    #{task.show_status}"
+          $stdout.puts "  #{task.tag}    #{task.show_status}"
         end
       end
       if !(xs = Bitferry::Task.stale).empty? && Bitferry.verbosity == :verbose
-        puts
-        puts '# Stale tasks'
-        puts
+        $stdout.puts
+        $stdout.puts '# Stale tasks'
+        $stdout.puts
         xs.each do |task|
-          puts "  #{task.tag}    #{task.show_status}"
+          $stdout.puts "  #{task.tag}    #{task.show_status}"
         end
       end
     end
