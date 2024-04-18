@@ -31,9 +31,15 @@ class UI < FXMainWindow
         output_tab = FXTabItem.new(tabs, 'Output')
           @output = FXText.new(tabs)
       tasks_tab = FXTabItem.new(tabs, 'Tasks')
-        tasks = FXText.new(tabs)
+        @tasks = FXTable.new(tabs)
+        @tasks.tableStyle |= TABLE_COL_SIZABLE | TABLE_NO_COLSELECT | TABLE_READONLY
+        @tasks.rowHeaderMode = LAYOUT_FIX_WIDTH
+        @tasks.rowHeaderWidth = 0
       volumes_tab = FXTabItem.new(tabs, 'Volumes')
-        volumes = FXText.new(tabs)
+        @volumes = FXTable.new(tabs)
+        @volumes.tableStyle |= TABLE_COL_SIZABLE | TABLE_NO_COLSELECT | TABLE_READONLY
+        @volumes.rowHeaderMode = LAYOUT_FIX_WIDTH
+        @volumes.rowHeaderWidth = 0
       @progress = FXProgressBar.new(top_frame, height: 16, opts: LAYOUT_FILL_X | LAYOUT_FIX_HEIGHT)
       controls = FXPacker.new(top_frame, opts: LAYOUT_FILL_X)
         @simulate = FXCheckButton.new(controls, "&Simulation mode (dry run)\tPrevent operations from making any on-disk changes")
@@ -78,6 +84,27 @@ class UI < FXMainWindow
     Bitferry::Logging.log = log = Logger.new($stdout)
     log.progname = :bitferryfx
     log.level = Logger::WARN
+    #
+    @volumes.setTableSize(Bitferry::Volume.intact.size, 2)
+    @volumes.setColumnText(0, 'Volume')
+    @volumes.setColumnText(1, 'Root')
+    i = 0
+    Bitferry::Volume.intact.each do |v|
+      @volumes.setItemText(i, 0, v.tag)
+      @volumes.setItemText(i, 1, v.root.to_s)
+      i += 1
+    end
+    #
+    @tasks.setTableSize(Bitferry::Task.intact.size, 2)
+    @tasks.setColumnText(0, 'Task')
+    @tasks.setColumnText(1, 'Operation')
+    i = 0
+    Bitferry::Task.intact.each do |t|
+      @tasks.setItemText(i, 0, t.tag)
+      @tasks.setItemText(i, 1, t.show_operation)
+      i += 1
+    end
+    #
   end
 
   def create
