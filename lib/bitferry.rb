@@ -1168,6 +1168,10 @@ module Bitferry
       def show_direction = '-->'
 
 
+      alias :source :directory
+      alias :destination :repository
+
+
       def process
         begin
           log.info("processing task #{tag}")
@@ -1268,6 +1272,10 @@ module Bitferry
       def show_direction = '-->'
 
 
+      alias :destination :directory
+      alias :source :repository
+
+      
       def externalize
         restic = {
           process: process_options

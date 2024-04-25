@@ -95,13 +95,17 @@ class UI < FXMainWindow
       i += 1
     end
     #
-    @tasks.setTableSize(Bitferry::Task.intact.size, 2)
+    @tasks.setTableSize(Bitferry::Task.intact.size, 4)
     @tasks.setColumnText(0, 'Task')
     @tasks.setColumnText(1, 'Operation')
+    @tasks.setColumnText(2, 'Source')
+    @tasks.setColumnText(3, 'Destination')
     i = 0
     Bitferry::Task.intact.each do |t|
       @tasks.setItemText(i, 0, t.tag)
       @tasks.setItemText(i, 1, t.show_operation)
+      @tasks.setItemText(i, 2, t.source.show_status)
+      @tasks.setItemText(i, 3, t.destination.show_status)
       i += 1
     end
     #
