@@ -1,7 +1,9 @@
 require 'json'
 require 'date'
 require 'open3'
+require 'base64'
 require 'logger'
+require 'openssl'
 require 'pathname'
 require 'neatjson'
 require 'rbconfig'
@@ -675,7 +677,7 @@ module Bitferry
     def self.exec(*args)
       cmd = [executable] + args
       log.debug(cmd.collect(&:shellescape).join(' '))
-      stdout, status = Open3.capture2(*cmd)
+      stdout, status = Open3.capture2e(*cmd)
       unless status.success?
         msg = "rclone exit code #{status.exitstatus}"
         log.error(msg)
@@ -685,7 +687,16 @@ module Bitferry
     end
 
 
-    def self.obscure(plain) = exec('obscure', '--', plain)
+    # https://github.com/rclone/rclone/blob/master/fs/config/obscure/obscure.go
+    SECRET = "\x9c\x93\x5b\x48\x73\x0a\x55\x4d\x6b\xfd\x7c\x63\xc8\x86\xa9\x2b\xd3\x90\x19\x8e\xb8\x12\x8a\xfb\xf4\xde\x16\x2b\x8b\x95\xf6\x38"
+
+
+    def self.obscure(plain)
+      cipher = OpenSSL::Cipher.new('AES-256-CTR')
+      cipher.encrypt
+      cipher.key = SECRET
+      Base64.urlsafe_encode64(cipher.random_iv + cipher.update(plain) + cipher.final, padding: false)
+    end
 
 
     def self.reveal(token) = exec('reveal', '--', token)
