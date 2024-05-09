@@ -699,7 +699,14 @@ module Bitferry
     end
 
 
-    def self.reveal(token) = exec('reveal', '--', token)
+    def self.reveal(token)
+      data = Base64.urlsafe_decode64(token)
+      cipher = OpenSSL::Cipher.new('AES-256-CTR')
+      cipher.decrypt
+      cipher.key = SECRET
+      cipher.iv = data[0...cipher.iv_len]
+      cipher.update(data[cipher.iv_len..-1]) + cipher.final
+    end
 
 
     class Encryption
@@ -1286,7 +1293,7 @@ module Bitferry
       alias :destination :directory
       alias :source :repository
 
-      
+
       def externalize
         restic = {
           process: process_options
