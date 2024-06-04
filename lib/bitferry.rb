@@ -910,8 +910,16 @@ module Bitferry
         cms = cmd.collect(&:shellescape).join(' ')
         $stdout.puts cms if Bitferry.verbosity == :verbose
         log.info(cms)
-        oe, status = Open3.capture2e(*cmd)
-        $stdout.puts oe
+        if Bitferry.ui == :gui
+          t = nil
+          Open3.popen2e(*cmd) do |i, oe, thr|
+            while x = oe.gets; $stdout.puts(x) end
+            t = thr
+          end
+          status = t.value
+        else
+          status = Open3.pipeline(cmd).first
+        end
         raise RuntimeError, "rclone exit code #{status.exitstatus}" unless status.success?
         status.success?
       end
@@ -1106,8 +1114,16 @@ module Bitferry
           wd = Dir.getwd unless chdir.nil?
           begin
             Dir.chdir(chdir) unless chdir.nil?
-            oe, status = Open3.capture2e(*cmd)
-            $stdout.puts oe
+            if Bitferry.ui == :gui
+              t = nil
+              Open3.popen2e(*cmd) do |i, oe, thr|
+                while x = oe.gets; $stdout.puts(x) end
+                t = thr
+              end
+              status = t.value
+            else
+              status = Open3.pipeline(cmd).first
+            end
             raise RuntimeError, "restic exit code #{status.exitstatus}" unless status.success?
             status.success?
           ensure
@@ -1278,7 +1294,7 @@ module Bitferry
       end
 
 
-      def exclude_filters = exclude.collect { |x| ['--exclude', x]}.flatten
+      def exclude_filters = exclude.collect { |x| ['--exclude', x] }.flatten
 
 
       def show_status = "#{show_operation} #{repository.show_status} #{show_direction} #{directory.show_status} #{show_filters}"
