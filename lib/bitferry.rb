@@ -886,7 +886,7 @@ module Bitferry
             when :quiet then '--quiet'
             else nil
           end,
-          Bitferry.verbosity == :verbose && Bitferry.ui == :cli ? '--progress' : nil,
+          Bitferry.verbosity == :verbose ? '--progress' : nil,
           Bitferry.simulate? ? '--dry-run' : nil,
         ].compact
       end

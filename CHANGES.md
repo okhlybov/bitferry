@@ -1,6 +1,8 @@
 ## 0.0.7
 
 - Fix backend execution issues in GUI
+- Add verbosity control in GUI
+- GUI info additions
 
 ## 0.0.6
 

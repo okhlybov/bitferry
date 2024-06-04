@@ -44,6 +44,8 @@ class UI < FXMainWindow
       controls = FXPacker.new(top_frame, opts: LAYOUT_FILL_X)
         @simulate = FXCheckButton.new(controls, "&Simulation mode (dry run)\tPrevent operations from making any on-disk changes")
           @simulate.checkState = Bitferry.simulate?
+        @verbose = FXCheckButton.new(controls, "&Verbose mode\tOutput internal logging information")
+        @verbose.checkState = false
       buttons = FXPacker.new(top_frame, opts: LAYOUT_FILL_X | PACK_UNIFORM_WIDTH | FRAME_SUNKEN)
         @process = FXButton.new(buttons, "&Process\tProcess all intact tasks", opts: BUTTON_NORMAL | BUTTON_INITIAL | BUTTON_DEFAULT | LAYOUT_SIDE_LEFT)
           @process.connect(SEL_COMMAND) { process }
@@ -58,6 +60,7 @@ class UI < FXMainWindow
 
   def process
     Bitferry.simulate = @simulate.checked?
+    Bitferry.verbosity = @verbose.checked? ? :verbose : :default
     @progress.setBarColor(:blue)
     @progress.progress = 0
     @output.text = nil
