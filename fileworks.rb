@@ -4,7 +4,6 @@
 require 'digest'
 require 'ostruct'
 require 'pathname'
-require 'seven_zip_ruby'
 
 
 module Fileworks

@@ -22,8 +22,7 @@ Gem::Specification.new do |s|
   s.add_development_dependency('seven-zip', '~> 1.4')
   s.add_development_dependency('archive-zip', '~> 0.12')
   s.add_development_dependency('redcarpet', '~> 3.6')
-  #s.add_development_dependency('commonmarker', '~> 1.0')
-  s.add_runtime_dependency('fxruby','~> 1.6')
-  s.add_runtime_dependency('neatjson','~> 0.10')
-  s.add_runtime_dependency('clamp','~> 1.3')
+  s.add_runtime_dependency('neatjson', '~> 0.10')
+  s.add_runtime_dependency('fxruby', '~> 1.6')
+  s.add_runtime_dependency('clamp', '~> 1.3')
 end
