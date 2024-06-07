@@ -5,7 +5,6 @@ require 'base64'
 require 'logger'
 require 'openssl'
 require 'pathname'
-require 'neatjson'
 require 'rbconfig'
 require 'fileutils'
 require 'shellwords'
@@ -408,6 +407,7 @@ module Bitferry
 
 
     def store
+      require 'neatjson'
       tasks.each(&:commit)
       hash = JSON.neat_generate(externalize, short: false, wrap: 200, afterColon: 1, afterComma: 1)
       if Bitferry.simulate?
