@@ -1,10 +1,8 @@
+require_relative 'fileworks'
 
 
 require 'rubygems'
 require 'rubygems/package_task'
-
-
-require_relative 'fileworks'
 
 
 stage = directory('stage').to_s
@@ -22,7 +20,7 @@ CLOBBER.concat [ cache ]
 
 def shell(cmd)
   if Gem::Platform.local.os == 'linux'
-    sh "echo 'set -e; rvm use system; wine cmd /c #{cmd}' | /bin/bash --login --noprofile --norc"
+    sh "wine cmd /c #{cmd}"
   else
     sh cmd
   end
@@ -30,6 +28,10 @@ end
 
 
 namespace :windows do
+
+
+  version = '0.0.6'
+  release = 1
 
 
   ruby = Fileworks::Remote.new(
@@ -83,11 +85,15 @@ namespace :windows do
     end
 
 
-    task :bitferry => :runtime do
+    task :bitferry => [:runtime, bin] do
       cd runtime_bin do
-        shell 'gem install bitferry'
+        shell "./gem install bitferry --version #{version}"
       end
-    end
+      cp ['windows/bitferry.cmd', 'windows/bitferryfx.cmd'], bin
+      wsite = File.join(Dir[File.join(runtime, 'lib/ruby/site_ruby/*')].first, 'bitferry')
+      mkdir wsite
+      cp 'windows/windows.rb', wsite
+  end
 
 
     task :fxruby => [:runtime, :bitferry] do
@@ -112,8 +118,8 @@ namespace :windows do
 
 
     exe = File.join(runtime_bin, 'rclone.exe')
-    
-    
+
+
     file exe => [:extract, 'ruby:runtime'] do |t|
       cp Dir[File.join(stage, 'rclone-*', 'rclone.exe')].first, t.name
     end
@@ -135,8 +141,8 @@ namespace :windows do
 
 
     exe = File.join(runtime_bin, 'restic.exe')
-    
-    
+
+
     file exe => [:extract] do |t|
       cp Dir[File.join(stage, 'restic_*.exe')].first, t.name
     end
@@ -150,5 +156,10 @@ namespace :windows do
 
   task :runtime => ['ruby:normalize', 'rclone:runtime', 'restic:runtime']
 
-  
+
+  task :installer => :runtime do
+    shell "erb bitferry=#{version} release=#{release} windows/bitferry.iss.erb > #{build}/bitferry.iss"
+    shell "erb bitferry=#{version} rclone=#{rclone.version} restic=#{restic.version} windows/README.txt.erb > #{build}/README.txt"
+  end
+
 end
