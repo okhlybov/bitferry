@@ -17,7 +17,7 @@ OutputBaseFilename=bitferry-{#MyAppVersion}-win32-{#MyAppRelease}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
-LicenseFile=..\LICENSE
+LicenseFile=LICENSE
 InfoBeforeFile=README.txt
 OutputDir=build
 Compression=lzma2
@@ -32,7 +32,7 @@ MinVersion=10.0
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
-Source: "build\bitferry\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs setntfscompression
+Source: "build\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs setntfscompression
 
 [Icons]
 Name: "{group}\{#MyAppName}FX"; Filename: "{app}\runtime\bin\rubyw.exe"; Parameters: "-r bitferry/windows '{app}\runtime\bin\bitferryfx'"

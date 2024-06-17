@@ -6,9 +6,10 @@ require 'rubygems/package_task'
 
 
 stage = directory('stage').to_s
-build = directory('build').to_s
+build = directory(File.join(stage, 'build')).to_s
 cache = directory('cache').to_s
 bin = directory(File.join(build, 'bin')).to_s
+sysroot = Gem::Platform.local.os == 'linux' ? `winepath -w "#{Dir.pwd}"` : Dir.pwd
 
 
 require 'rake/clean'
@@ -18,13 +19,7 @@ CLEAN.concat [ stage, build, 'pkg' ]
 CLOBBER.concat [ cache ]
 
 
-def shell(cmd)
-  if Gem::Platform.local.os == 'linux'
-    sh "wine cmd /c #{cmd}"
-  else
-    sh cmd
-  end
-end
+def shell(cmd) = Gem::Platform.local.os == 'linux' ? sh("wine cmd /c #{cmd}") : sh(cmd)
 
 
 namespace :windows do
@@ -87,7 +82,7 @@ namespace :windows do
 
     task :bitferry => [:runtime, bin] do
       cd runtime_bin do
-        shell "./gem install bitferry --version #{version}"
+        shell "./gem install bitferry -N --version #{version}"
       end
       cp ['windows/bitferry.cmd', 'windows/bitferryfx.cmd'], bin
       wsite = File.join(Dir[File.join(runtime, 'lib/ruby/site_ruby/*')].first, 'bitferry')
@@ -158,8 +153,28 @@ namespace :windows do
 
 
   task :installer => :runtime do
-    shell "erb bitferry=#{version} release=#{release} windows/bitferry.iss.erb > #{build}/bitferry.iss"
-    shell "erb bitferry=#{version} rclone=#{rclone.version} restic=#{restic.version} windows/README.txt.erb > #{build}/README.txt"
+    require 'erb'
+    File.open(File.join(stage, 'bitferry.iss'), 'wt') do |file|
+      bitferry=version
+      release=release
+      file << ERB.new(File.read('windows/bitferry.iss.erb')).result(binding)
+    end
+    File.open(File.join(stage, 'README.txt'), 'wt') do |file|
+      bitferry=version
+      rclone = rclone.version
+      restic = restic.version
+      file << ERB.new(File.read('windows/README.txt.erb')).result(binding)
+    end
+    require 'redcarpet'
+    File.open(File.join(build, 'README.html'), 'wt') do |file|
+      file << Redcarpet::Markdown.new(Redcarpet::Render::HTML.new(hard_wrap: true), fenced_code_blocks: true, disable_indented_code_blocks: true).render(File.read('README.md'))
+    end
+    cp ['LICENSE', 'windows/path.iss', 'windows/iscc.cmd'], stage
+    cd stage do
+      require 'shellwords'
+      shell "./iscc /Qp /O#{Shellwords.escape(sysroot)} bitferry.iss"
+    end
   end
+
 
 end
