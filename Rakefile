@@ -25,7 +25,7 @@ def shell(cmd) = Gem::Platform.local.os == 'linux' ? sh("wine cmd /c #{cmd}") : 
 namespace :windows do
 
 
-  version = '0.0.6'
+  version = '0.0.7'
   release = 1
 
 
