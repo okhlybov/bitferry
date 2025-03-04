@@ -370,6 +370,9 @@ module Bitferry
     end
 
 
+    ENCOMPASSING_PATH_PREFIX = /^(?!(\.\.$|\.\.\/))/ # not .. by itself and not starting with ../
+
+
     def self.endpoint(root)
       path = Pathname.new(root).realdirpath
       intact.sort { |v1, v2| v2.root.to_s.size <=> v1.root.to_s.size }.each do |volume|
@@ -377,7 +380,7 @@ module Bitferry
           stem = path.relative_path_from(volume.root).to_s #.chomp('/')
           case stem
             when '.' then return volume.endpoint
-            when /^[^\.].*/ then return volume.endpoint(stem)
+            when ENCOMPASSING_PATH_PREFIX then return volume.endpoint(stem)
           end
         rescue ArgumentError
           # Catch different prefix error on Windows
@@ -1446,7 +1449,7 @@ module Bitferry
       def initialize(volume, path)
         @volume_tag = volume.tag
         @path = Pathname.new(path)
-        raise ArgumentError, "expected relative path but got #{self.path}" unless (/^[\.\/]/ =~ self.path.to_s).nil?
+        raise ArgumentError, "expected relative path but got #{self.path}" if (Volume::ENCOMPASSING_PATH_PREFIX =~ self.path.to_s).nil?
       end
 
 
