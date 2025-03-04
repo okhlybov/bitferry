@@ -1,3 +1,8 @@
+## 0.0.8
+
+- Proper handling of paths starting with dot(s)
+- Allow volume and task timestamps missing in storage files
+
 ## 0.0.7
 
 - Fix backend execution issues in GUI

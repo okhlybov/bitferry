@@ -13,7 +13,7 @@ require 'shellwords'
 module Bitferry
 
 
-  VERSION = '0.0.7'
+  VERSION = '0.0.8'
 
 
   module Logging
