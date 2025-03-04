@@ -305,11 +305,15 @@ module Bitferry
     end
 
 
-    def initialize(root, tag: Bitferry.tag, modified: DateTime.now, overwrite: false)
+    def initialize(root, tag: Bitferry.tag, modified: nil, overwrite: false)
       @tag = tag
       @generation = 0
       @vault = {}
-      @modified = modified
+      @modified = case modified
+        when nil then DateTime.now
+        when DateTime then modified
+        else DateTime.parse(modified)
+      end
       @overwrite = overwrite
       @root = Pathname.new(root).realdirpath
     end
@@ -325,11 +329,19 @@ module Bitferry
     def restore(root)
       hash = JSON.load_file(storage = Pathname(root).join(STORAGE), { symbolize_names: true })
       raise IOError, "bad volume storage #{storage}" unless hash.fetch(:bitferry) == "0"
-      initialize(root, tag: hash.fetch(:volume), modified: DateTime.parse(hash.fetch(:modified)))
+      volume = hash.fetch(:volume)
+      begin
+        modified = DateTime.parse(hash.fetch(:modified))
+        @modified = false
+      rescue
+        modified = nil
+        @modified = true
+        log.warn("modified key missing - flagging volume #{volume} out of date")
+      end
+      initialize(root, tag: volume, modified: modified)
       hash.fetch(:tasks, []).each { |hash| Task::ROUTE.fetch(hash.fetch(:operation).intern).restore(hash) }
       @vault = hash.fetch(:vault, {}).transform_keys { |key| key.to_s }
       @state = :intact
-      @modified = false
     end
 
 
@@ -551,12 +563,16 @@ module Bitferry
     end
 
 
-    def initialize(tag: Bitferry.tag, modified: DateTime.now, include: [], exclude: [])
+    def initialize(tag: Bitferry.tag, modified: nil, include: [], exclude: [])
       @tag = tag
       @generation = 0
       @include = include
       @exclude = exclude
-      @modified = modified.is_a?(DateTime) ? modified : DateTime.parse(modified)
+      @modified = case modified
+          when nil then DateTime.now
+          when DateTime then modified
+          else DateTime.parse(modified)
+        end
       # FIXME handle process_options at this level
     end
 
@@ -943,15 +959,23 @@ module Bitferry
 
 
       def restore(hash)
+        task = hash.fetch(:task)
+        begin
+          modified = hash.fetch(:modified)
+        rescue
+          modified = nil
+          log.warn("modified key missing - flagging task #{task} out of date")
+        end
         initialize(
           restore_endpoint(hash.fetch(:source)),
           restore_endpoint(hash.fetch(:destination)),
-          tag: hash.fetch(:task),
-          modified: hash.fetch(:modified, DateTime.now),
+          tag: task,
+          modified: modified,
           process: hash[:rclone],
           encryption: hash[:encryption].nil? ? nil : Rclone::Encryption.restore(hash[:encryption])
         )
         super(hash)
+        touch if modified.nil?
       end
 
 
